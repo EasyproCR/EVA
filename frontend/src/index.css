@@ -1,0 +1,25 @@
+@import "tailwindcss";
+
+@theme {
+	--color-background: #f4f7fb;
+	--color-card: #ffffff;
+	--color-card-foreground: #1f2937;
+	--color-border: #d6dee6;
+	--color-accent: #0e4a6a;
+	--color-accent-foreground: #e9f4fa;
+	--color-primary: #06b6d4;
+	--color-primary-foreground: #ffffff;
+	--color-secondary: #e6f3f7;
+	--color-secondary-foreground: #0e4a6a;
+	--color-muted: #eef2f6;
+	--color-muted-foreground: #4b5563;
+}
+
+/* Base layout and typography */
+html, body, #root {
+	height: 100%;
+}
+
+body {
+	@apply bg-background text-card-foreground font-sans;
+}
