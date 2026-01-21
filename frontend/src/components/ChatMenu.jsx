@@ -2,6 +2,10 @@ import {useEffect,useState } from 'react'
 import ChatService from '../services/ChatService';
 import { Bot, Send } from "lucide-react";
 import { isReloading } from '../hooks/EstadoPagina';
+import LoadingDots from './LoadingDots';
+import AudioPlayer from './audioEffect/AudioPlayer';
+import Pop from "../../src/assets/Audio/Pop.wav";
+
 
 const chatService = new ChatService();
 const nav = performance.getEntriesByType?.("navigation")?.[0];
@@ -14,7 +18,7 @@ const comunication = async (mensaje) => {
 };
 
 function ChatMenu() {
-
+    
     useEffect(() => {
     chatService.getPrimerMensaje().then((mensaje) => {
         setConversation([{
@@ -44,6 +48,7 @@ function ChatMenu() {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        
         if (input.trim()) {
             const userMessage = {
                 id: Date.now().toString(),
@@ -57,8 +62,8 @@ function ChatMenu() {
             // Mostrar mensaje de cargando
             setLoading(true);
             setConversation(prev => [...prev, {
-                id: (Date.now() + 2).toString(),
-                text: "...",
+                id: (Date.now() + 1).toString(),
+                text: <LoadingDots />,
                 sender: "bot",
                 timestamp: new Date(),
                 loading: true
@@ -67,6 +72,7 @@ function ChatMenu() {
             try {
                 const respuesta = await comunication(input);
                 setConversation(prev => {
+                    AudioPlayer(Pop);
                     // Elimina el mensaje de cargando
                     const sinLoading = prev.filter(m => !m.loading);
                     return [...sinLoading, {
@@ -78,6 +84,7 @@ function ChatMenu() {
                 });
             } catch (error) {
                 setConversation(prev => {
+                    AudioPlayer(Pop);
                     const sinLoading = prev.filter(m => !m.loading);
                     return [...sinLoading, {
                         id: (Date.now() + 1).toString(),
@@ -97,7 +104,7 @@ function ChatMenu() {
                 <div className="px-4 sm:px-6 lg:px-8 py-6">
                     <div className="flex items-center gap-3 justify-center">
                         <div className="h-10 w-10 rounded-lg bg-primary flex items-center justify-center">
-                            <Bot />
+                            <Bot size={40} />
                         </div>
                         <div>
                             <h1 className="text-3xl font-bold text-accent-foreground">EVA</h1>
@@ -117,14 +124,14 @@ function ChatMenu() {
                         >
                             {message.sender === "bot" && (
                                 <div className="h-14 w-14 rounded-full bg-primary flex items-center justify-center text-primary-foreground shrink-0">
-                                    <Bot />
+                                    <Bot size={40} />
                                 </div>
                             )}
                             <div
                                 className={`max-w-[75%] rounded-2xl px-8 py-5 ${message.sender === "user" ? "bg-primary text-primary-foreground" : "bg-muted text-card-foreground"
                                     }`}
                             >
-                                <p className="text-xl leading-relaxed">{message.text}</p>
+                                <div className="text-xl leading-relaxed">{message.text}</div>
                                 <span
                                     className={`text-base mt-2 block ${message.sender === "user" ? "text-primary-foreground/70" : "text-muted-foreground"
                                         }`}
