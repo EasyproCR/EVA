@@ -21,7 +21,7 @@ export function getEnv() {
         maxBodySize: parseString(process.env.MAX_BODY_SIZE, "20kb"),
         openaiApiKey: process.env.OPENAI_API_KEY,
         openaiModel: parseString(process.env.OPENAI_MODEL, "gpt-4.1-mini-2025-04-14"),
-        openaiMaxTokens: parseNumber(process.env.OPENAI_MAX_TOKENS, 100),
+        openaiMaxTokens: parseNumber(process.env.OPENAI_MAX_TOKENS, 600),
         trustProxy: parseNumber(process.env.TRUST_PROXY, 1),
         corsOrigins: parseCsv(process.env.CORS_ORIGINS),
         chatRateLimitWindowMs: parseNumber(process.env.CHAT_RATE_LIMIT_WINDOW_MS, 60_000),

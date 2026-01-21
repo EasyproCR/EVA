@@ -1,7 +1,7 @@
 class EasyProService {
     
     async getUserData() {
-        /*/
+        
         const localUrlRaw = import.meta.env.VITE_LOCAL_HOST_EASYPRO;
         const localUrl = typeof localUrlRaw === 'string' ? localUrlRaw.trim().replace(/\/$/, '') : '';
         if (!localUrl) {
@@ -30,9 +30,9 @@ class EasyProService {
         if (rawNombre == null || (typeof rawNombre === 'string' && rawNombre.trim() === '')) {
             throw new Error('EasyPro /api/user: missing nombre/name in response');
         }
-        /*/
+        
 
-        let datos= { id: "1" , nombre: "Facundo" };
+        let datos= { id: rawId, nombre: rawNombre };
         return  datos ;
 
     }

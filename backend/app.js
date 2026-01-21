@@ -47,6 +47,7 @@ const deleteLimiter = createDeleteLimiter({
 });
 
 app.use(createChatRouter({ controller, chatLimiter, deleteLimiter }));
+app.use( '/api',createChatRouter({ controller, chatLimiter, deleteLimiter }));
 
 // Manejo de errores del body parser (por ejemplo, JSON inválido o demasiado grande)
 app.use(bodyParserErrorHandler({ maxBodySize: env.maxBodySize }));
