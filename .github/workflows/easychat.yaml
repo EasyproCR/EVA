@@ -30,8 +30,8 @@ jobs:
           context: ./backend
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/easychat-backend:main
-            ghcr.io/${{ github.repository_owner }}/easychat-backend:${{ github.sha }}
+            ghcr.io/easyprocr/easychat-backend:main
+            ghcr.io/easyprocr/easychat-backend:${{ github.sha }}
 
       - name: Build & Push Frontend
         uses: docker/build-push-action@v5
@@ -39,5 +39,5 @@ jobs:
           context: ./frontend
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/easychat-frontend:main
-            ghcr.io/${{ github.repository_owner }}/easychat-frontend:${{ github.sha }}
+            ghcr.io/easyprocr/easychat-frontend:main
+            ghcr.io/easyprocr/easychat-frontend:${{ github.sha }}
