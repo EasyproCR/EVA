@@ -1,6 +1,15 @@
 import EasyProService from "./EasyProService";
+import { getRuntimeConfig } from "../utils/runtimeConfig";
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL;
+const runtime = getRuntimeConfig();
+
+
+export const BASE_URL =
+  runtime.API_BASE_URL ??
+  import.meta.env.VITE_API_BASE_URL ??
+  "/api";
+
+  
 class ChatService {
     id = null;
     nombre = "";
