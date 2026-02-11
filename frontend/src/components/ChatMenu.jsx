@@ -5,13 +5,9 @@ import { isReloading } from '../hooks/EstadoPagina';
 import LoadingDots from './LoadingDots';
 import AudioPlayer from './audioEffect/AudioPlayer';
 import Pop from "../../src/assets/Audio/Pop.wav";
-<<<<<<< Updated upstream
-
-=======
 import Robot from "./Robot";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
->>>>>>> Stashed changes
 
 const chatService = new ChatService();
 const nav = performance.getEntriesByType?.("navigation")?.[0];
