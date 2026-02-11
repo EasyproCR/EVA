@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "github-markdown-css/github-markdown.css";
 
 @theme {
 	--color-background: #f4f7fb;
@@ -22,4 +23,12 @@ html, body, #root {
 
 body {
 	@apply bg-background text-card-foreground font-sans;
+}
+
+/* Scope GitHub markdown styles to the chat bubble and keep our theme colors */
+.markdown-body {
+	background-color: transparent;
+	color: inherit;
+	font-size: inherit;
+	line-height: inherit;
 }

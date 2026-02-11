@@ -5,7 +5,13 @@ import { isReloading } from '../hooks/EstadoPagina';
 import LoadingDots from './LoadingDots';
 import AudioPlayer from './audioEffect/AudioPlayer';
 import Pop from "../../src/assets/Audio/Pop.wav";
+<<<<<<< Updated upstream
 
+=======
+import Robot from "./Robot";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+>>>>>>> Stashed changes
 
 const chatService = new ChatService();
 const nav = performance.getEntriesByType?.("navigation")?.[0];
@@ -131,7 +137,38 @@ function ChatMenu() {
                                 className={`max-w-[75%] rounded-2xl px-8 py-5 ${message.sender === "user" ? "bg-primary text-primary-foreground" : "bg-muted text-card-foreground"
                                     }`}
                             >
-                                <div className="text-xl leading-relaxed">{message.text}</div>
+                                <div className="text-xl leading-relaxed">
+                                    {typeof message.text === "string" ? (
+                                        <div className="markdown-body">
+                                            <Markdown
+                                                remarkPlugins={[remarkGfm]}
+                                                skipHtml={true}
+                                                
+                                                components={{
+                                                    p: ({ children }) => <p className="whitespace-pre-wrap">{children}</p>,
+                                                    strong: ({ children }) => <strong className="font-bold">{children}</strong>,
+                                                    a: ({ children, ...props }) => (
+                                                        <a {...props} rel="noreferrer" className="underline">
+                                                            {children}
+                                                        </a>
+                                                    ),
+                                                    ul: ({ children }) => <ul className="list-disc pl-6">{children}</ul>,
+                                                    ol: ({ children }) => <ol className="list-decimal pl-6">{children}</ol>,
+                                                    code: ({ children }) => (
+                                                        <code className="font-mono text-base whitespace-pre-wrap">{children}</code>
+                                                    ),
+                                                    pre: ({ children }) => (
+                                                        <pre className="overflow-x-auto whitespace-pre-wrap">{children}</pre>
+                                                    ),
+                                                }}
+                                            >
+                                                {message.text}
+                                            </Markdown>
+                                        </div>
+                                    ) : (
+                                        message.text
+                                    )}
+                                </div>
                                 <span
                                     className={`text-base mt-2 block ${message.sender === "user" ? "text-primary-foreground/70" : "text-muted-foreground"
                                         }`}

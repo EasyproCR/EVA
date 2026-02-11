@@ -50,6 +50,7 @@ class ChatService {
                 mensaje: mensaje,
             }),
         });
+        
 
         if (!comunicacion.ok) {
             const errorText = await comunicacion.text().catch(() => "");
@@ -57,6 +58,7 @@ class ChatService {
         }
 
         const data = await comunicacion.json();
+        console.log("Received response from /chat:", data);
         return data.respuesta;
     }
 
