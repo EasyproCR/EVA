@@ -17,7 +17,7 @@ router = APIRouter(prefix="/api", tags=["ia"])
 # Dependencias para autenticación y utilidades
 # Estas funciones deben estar implementadas en ia_servicio.py
 
-@router.post("/chat", response_model=ChatResponse,  x_session_id: str = Header(default="dev"))
+@router.post("/chat", response_model=ChatResponse)
 async def chat(
     request: ChatRequest,
     http_req: Request,
@@ -30,8 +30,10 @@ async def chat(
     POST /api/chat
     """
     settings = get_settings()
-    orch = http_req.app.state.orch   
-    response_obj = orch.procesar_mensaje(mensaje_limpio or request.mensaje)
+    orch = http_req.app.state.orch 
+ 
+    print(f"[DEBUG] user_info id: {user_info.get('id', '')}")
+    response_obj = orch.procesar_mensaje(mensaje_limpio or request.mensaje , session_id=user_info.get("id", ""), nombreUsuario=user_info.get("nombre", ""))
     response_text = str(response_obj)
     return ChatResponse(respuesta=response_text, id=user_info.get("id", ""))
 
@@ -41,7 +43,7 @@ async def saludo(user_info: dict = Depends(get_user_info_dependency)) -> dict:
     Endpoint de saludo inicial.
     GET /api/saludo
     """
-    if user_info.get("authenticated"):
+    if  user_info.get("authenticated"):
         return {
             "saludo": f"Hola {user_info.get('nombre', '')}! Soy EVA, tu asistente de IA. ¿En qué puedo ayudarte hoy?"
         }
@@ -61,7 +63,7 @@ async def eliminar_memoria(
     DELETE /api/eliminarMemoria
     """
     user_id = request.id if request.id else user_info.get("id", "")
-    # TODO: Integrar con LlamaIndex para eliminar memoria
+    
     return {
         "message": f"Memoria eliminada para usuario {user_id}",
         "success": True

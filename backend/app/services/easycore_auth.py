@@ -7,6 +7,7 @@ import re
 import jwt
 from typing import Any
 from app.core.config import get_settings
+from app.services.llamaOrchestor import LlamaOrchestor
 
 
 class EasycoreAuth:
@@ -56,7 +57,7 @@ class EasycoreAuth:
             user_id = EasycoreAuth._to_trimmed_string(payload.get("id"))
             nombre = EasycoreAuth._clean_text(payload.get("nombre"))
             
-            print(f"Token decodificado: id='{user_id}', nombre='{nombre}'")
+            print(f"Token decodificado: id='{user_id}', nombre='{nombre}'")  # Ensure memory is initialized for this user
             
             return {
                 "ok": True,

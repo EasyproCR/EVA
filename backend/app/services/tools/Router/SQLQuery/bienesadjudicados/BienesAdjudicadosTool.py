@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
+from urllib import response
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
-
+from app.services.tools.Router.SQLQuery.filterbase import STOPWORDS, extraer_filtros
 
 # ✅ Ajusta esta lista a tus columnas reales (DESCRIBE vw_get_all_properties;)
 DEFAULT_SELECT_COLS = [
@@ -18,10 +19,11 @@ DEFAULT_SELECT_COLS = [
     "tipo_propiedad",
     "tipo_oferta",
     "precio_usd",
+    "precio_local",
     "bedrooms",
     "bathrooms",
     "area_construccion",
-    "tamano_lote",
+    "tamanio_lote",
     "imagen",
     "property_url",
     "agent_name"
@@ -69,6 +71,7 @@ class BienesDB:
         precio_min: Optional[float] = None,
         precio_max: Optional[float] = None,
         limit: int = 25,
+        filtros_adicionales: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         """
         Consulta controlada sobre vw_get_all_properties.
@@ -78,6 +81,8 @@ class BienesDB:
         """
         # hard limits
         limit = max(1, min(int(limit), 50))
+
+        filtros_adicionales = filtros_adicionales or extraer_filtros(q or "")
 
         select_cols = ", ".join(f"`{c}`" for c in DEFAULT_SELECT_COLS)
 
@@ -89,28 +94,36 @@ class BienesDB:
                 where.append(f"LOWER(`{field}`) LIKE :{param_name}")
                 params[param_name] = f"%{value.lower()}%"
 
-        # Texto libre q -> OR sobre columnas textuales
-        if q:
-            terms = [t.strip().lower() for t in q.split() if t.strip()]
-            # cada término debe aparecer en alguna columna (AND de términos, OR de columnas)
-            for i, term in enumerate(terms):
-                ors = []
-                for j, col in enumerate(TEXT_SEARCH_COLS):
-                    pn = f"t_{i}_{j}"
-                    ors.append(f"LOWER(`{col}`) LIKE :{pn}")
-                    params[pn] = f"%{term}%"
-                where.append("(" + " OR ".join(ors) + ")")
+            if q:
+                terms = [t.strip().lower() for t in q.split()
+                    if t.strip() and t.lower() not in STOPWORDS and len(t.strip()) >= 3]
+                term_blocks = []
+
+                # ✅ Si no quedó nada útil, NO busques todo el catálogo
+                if not terms and not any([provincia, canton, tipo, estado, precio_min, precio_max]):
+                    return []
+                for i, term in enumerate(terms):
+                    ors = []
+                    for j, col in enumerate(TEXT_SEARCH_COLS):
+                        pn = f"t_{i}_{j}"
+                        ors.append(f"LOWER(`{col}`) LIKE :{pn}")
+                        params[pn] = f"%{term}%"
+                    term_blocks.append("(" + " OR ".join(ors) + ")")
+                if term_blocks:
+                    where.append("(" + " OR ".join(term_blocks) + ")")
 
         add_like("provincia", provincia, "provincia")
         add_like("canton", canton, "canton")
-        add_like("tipo", tipo, "tipo")
+        add_like("tipo_propiedad", tipo, "tipo_propiedad")
         add_like("estado", estado, "estado")
 
+        price_expr = "CAST(COALESCE(`precio_usd`, `precio_local`) AS DECIMAL(18,2))"
+
         if precio_min is not None:
-            where.append("`precio` >= :precio_min")
+            where.append(f"{price_expr} >= :precio_min")
             params["precio_min"] = float(precio_min)
         if precio_max is not None:
-            where.append("`precio` <= :precio_max")
+            where.append(f"{price_expr} <= :precio_max")
             params["precio_max"] = float(precio_max)
 
         where_sql = " AND ".join(where) if where else "1=1"
@@ -119,12 +132,17 @@ class BienesDB:
             SELECT {select_cols}
             FROM `vw_get_all_properties`
             WHERE {where_sql}
-            ORDER BY `precio` ASC
+            ORDER BY ({price_expr} IS NULL), {price_expr} ASC
+
             LIMIT :limit
         """
-
+        print ("Ejecutando SQL:", sql)
+        print ("Con parámetros:", params)
         with self.engine.connect() as conn:
             rows = conn.execute(text(sql), params).mappings().all()
 
         # devuelve lista de dicts serializable
+
+        if not rows:
+             return []
         return [dict(r) for r in rows]

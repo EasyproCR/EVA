@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     app_version: str = "1.0.0"
     debug: bool = False
 
+
+
+    
+
     @computed_field
     @property
     def DB_URI_EASYCORE(self) -> str:

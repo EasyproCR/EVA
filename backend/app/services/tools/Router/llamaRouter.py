@@ -1,5 +1,6 @@
 from __future__ import annotations
-
+from guardrails.integrations.llama_index import GuardrailsQueryEngine
+from app.core.aiConfig import build_guard
 from llama_index.core.query_engine import RouterQueryEngine
 from llama_index.core.selectors import PydanticSingleSelector
 from llama_index.core.tools import QueryEngineTool,ToolMetadata,FunctionTool
@@ -14,7 +15,12 @@ from llama_index.core.selectors import PydanticSingleSelector
 from llama_index.core.program import LLMTextCompletionProgram
 from llama_index.core.output_parsers import PydanticOutputParser
 
-from app.services.tools.Router.SQLQuery import BienesAdjudicadosTool
+from app.services.tools.Router.General.general_query_engine import GeneralQueryEngine
+from app.services.tools.Router.SQLQuery.bienesadjudicados import BienesAdjudicadosTool
+from app.services.tools.Router.SQLQuery.bienesadjudicados.bienesqueryengine import BienesQueryEngine
+from app.services.Guard.guardtrails import build_Select_Guard
+
+
 
 def _get_conn_uri(settings, key: str) -> str:
     """Obtiene una URI de conexión desde settings.
@@ -58,36 +64,48 @@ class LlamaRouter:
     ):
         self.settings = settings
 
-       
+        
 
         # -------- SQL tool 1 (DB1) --------
         db1_uri = _get_conn_uri(settings, db1_key)
         engine_bienes = BienesAdjudicadosTool.BienesDB.build_engine(db1_uri)
         bienes_db = BienesAdjudicadosTool.BienesDB(engine_bienes)
-
+        qe_bienes = BienesQueryEngine(bienes_db)
         
-        sql_db1_tool = FunctionTool.from_defaults(
-            function=bienes_db.buscar,
+        sql_db1_tool = QueryEngineTool(
+            query_engine=qe_bienes,
             metadata=ToolMetadata(
-            name="bienes adjudicados",
-            description=(
+                name="bienes adjudicados",
+                description=(
                "Busca propiedades/bienes adjudicados en la vista vw_get_all_properties. "
                 "Usa filtros: q (texto libre), provincia, canton, tipo, estado, precio_min, precio_max, limit."
             ),
             )
+            
         )
 
         # -------- SQL tool 2 (DB2) --------
+
+        
+        guard = build_guard()
+        
         db2_uri = _get_conn_uri(settings, db2_key)
         try:
             db2_sql_db = LlamaSQLQuery(db2_uri).get_sql_database()
         except Exception as e:
             raise ValueError(f"Error al conectar a DB2 con URI '{db2_uri}': {e}")
-        db2_engine = RetrieverSQL(
+        rawengine= RetrieverSQL(
             db2_sql_db,
             table_catalog=easycoreContext.TABLE_CATALOG_EASYCORE, 
             config=TableRetrieverConfig(similarity_top_k=6),
         ).get_query_engine()
+
+        
+        db2_engine=GuardrailsQueryEngine(
+            rawengine,
+            guard=guard,
+        )
+        
 
         sql_db2_tool = QueryEngineTool(
             query_engine=db2_engine,
@@ -100,14 +118,29 @@ class LlamaRouter:
             )
         )
 
+
+
+
+        #-------- General tool --------
+        general_qe = GeneralQueryEngine()
+        general_tool = QueryEngineTool(
+            query_engine=general_qe,
+            metadata=ToolMetadata(
+                name="general",
+                description=(
+                    "Usar para preguntas generales sin datos específicos ni documentos."
+                )
+            )
+        )
+        
+
+        
+
         # -------- Router --------
+        self.tools = [sql_db1_tool, sql_db2_tool, general_tool]
         self.router = RouterQueryEngine(
-            selector=PydanticSingleSelector.from_defaults( ),
-            query_engine_tools=[
-                sql_db1_tool,
-                sql_db2_tool,
-                
-            ],
+            selector=PydanticSingleSelector.from_defaults(),
+            query_engine_tools=self.tools,
         )
 
     # -------- External placeholder (no router) --------
@@ -118,3 +151,4 @@ class LlamaRouter:
     # -------- Main API --------
     def query(self, user_query: str):
         return self.router.query(user_query)
+    

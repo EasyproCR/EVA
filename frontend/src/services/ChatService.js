@@ -1,9 +1,9 @@
 import EasyProService from "./EasyProService";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL;
-class ChatService { 
-    id=null;
-    nombre="";
+class ChatService {
+    id = null;
+    nombre = "";
 
     constructor() {
         this.easyProService = new EasyProService();
@@ -32,25 +32,36 @@ class ChatService {
         }
     }
 
-    async comunicacion(mensaje){
+    async comunicacion(mensaje) {
         await this.ensureReady();
 
         if (!BASE_URL) {
             throw new Error("Missing env var: VITE_API_BASE_URL");
         }
 
-        const comunicacion= await fetch(`${BASE_URL}/chat`, {
+        const token = localStorage.getItem('chat_token');
+        const headers = {
+            'Content-Type': 'application/json',
+        };
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+
+        const comunicacion = await fetch(`${BASE_URL}/chat`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
+            headers: headers,
             body: JSON.stringify({
-                id: this.id,
-                nombre: this.nombre,
+                // id and nombre are now extracted from token in backend, 
+                // but we keep sending them for now if backend expects something,
+                // though backend validation only checks 'mensaje'.
+                // Ideally we can stop sending them, but to be safe and consistent with previous code:
+                // id: this.id,
+                // nombre: this.nombre, 
+                // Wait, backend logic changed to use req.user.id. 
+                // So the body id/nombre are ignored.
                 mensaje: mensaje,
             }),
         });
-        
 
         if (!comunicacion.ok) {
             const errorText = await comunicacion.text().catch(() => "");
@@ -58,30 +69,36 @@ class ChatService {
         }
 
         const data = await comunicacion.json();
-        console.log("Received response from /chat:", data);
         return data.respuesta;
     }
 
-    async getPrimerMensaje(){
-        const bienvenida =  await fetch(`${BASE_URL}/saludo`);
+    async getPrimerMensaje() {
+        const bienvenida = await fetch(`${BASE_URL}/saludo`);
         const data = await bienvenida.json();
-        return data.saludo  ;
-        
+        return data.saludo;
+
     }
 
 
-    async eliminarMemoria(){
+    async eliminarMemoria() {
         await this.ensureReady();
         if (!BASE_URL) {
             throw new Error("Missing env var: VITE_API_BASE_URL");
         }
-        const eliminar =  await fetch(`${BASE_URL}/eliminarMemoria`, {
+
+        const token = localStorage.getItem('chat_token');
+        const headers = {
+            'Content-Type': 'application/json',
+        };
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+
+        const eliminar = await fetch(`${BASE_URL}/eliminarMemoria`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
+            headers: headers,
             body: JSON.stringify({
-                id: this.id,
+                // id: this.id, // Not needed, backend uses token
             }),
         });
 

@@ -30,7 +30,7 @@ app.include_router(ia_router)
 async def startup_event():
     print(f"Starting {settings.app_name} v{settings.app_version}")
 
-    app.state.store = SessionStore(ttl_seconds=60*30)
+    # SessionStore se instancia por usuario en los endpoints, no aquí
     app.state.orch = LlamaOrchestor(settings)
 
 
