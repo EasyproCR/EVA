@@ -1,14 +1,17 @@
+"""
+BienesQueryEngine Mejorado - Sugiere al usuario cómo obtener más detalles
+"""
+
 from __future__ import annotations
-
 from typing import Any, Dict, List, Optional
-
 from llama_index.core.base.response.schema import Response
 from llama_index.core.base.base_query_engine import BaseQueryEngine
-# Import callback manager (varía por versión)
+
 try:
     from llama_index.core.callbacks import CallbackManager
 except Exception:
     from llama_index.core.callbacks.base import CallbackManager
+
 
 class BienesQueryEngine(BaseQueryEngine):
     def __init__(self, bienes_db, callback_manager: Optional[CallbackManager] = None):
@@ -18,32 +21,40 @@ class BienesQueryEngine(BaseQueryEngine):
         super().__init__(callback_manager=callback_manager)
         self.bienes_db = bienes_db
 
-    # ✅ sync query (RouterQueryEngine lo usa)
-    def _query(self, query_bundle) -> str:
+    def _query(self, query_bundle) -> Response:
         user_query = str(query_bundle)
 
         rows = self.bienes_db.buscar(q=user_query, limit=20)
 
-        if not isinstance(rows, list):
-            return Response(response="No encontré resultados.")
+        if not isinstance(rows, list) or len(rows) == 0:
+            return Response(response="No encontré resultados para tu búsqueda.")
 
+        # ✅ NUEVO: Formatear resultados con sugerencias
+        lines = ["**Resultados:**\n"]
         
-
-        lines = []
-        for r in rows[:10]:
+        for i, r in enumerate(rows[:10], 1):  # ✅ Numerados
+            precio = r.get('precio_usd')
+            precio_str = f"USD {float(precio):,.0f}" if precio else "Precio no disponible"
+            
             lines.append(
-                f"- {r.get('nombre')} | {r.get('provincia')}, {r.get('canton')} | "
-                f"USD {r.get('precio_usd')} | {r.get('property_url')}"
+                f"{i}. **{r.get('nombre')}** | "
+                f"{r.get('provincia')}, {r.get('canton')} | "
+                f"{precio_str} | "
+                f"[Ver en web]({r.get('property_url')})"
             )
-
-        return Response(response="Resultados:\n" + "\n".join(lines))
         
+        # ✅ NUEVO: Añadir sugerencias al usuario
+        lines.append("\n---\n")
+        lines.append("💡 **¿Quieres más detalles?**")
+        lines.append("Puedes decirme:")
+        lines.append("• _\"Dime más sobre la #1\"_ (para cualquier número)")
+        lines.append("• _\"Info detallada del terreno en Moravia\"_ (por nombre/ubicación)")
+        lines.append("• _O pega el enlace directo para análisis completo_")
 
-    # ✅ async query requerido por la clase abstracta
-    async def _aquery(self, query_bundle) -> str:
-        # como tu acceso a DB es sync, lo dejamos sync por ahora
+        return Response(response="\n".join(lines))
+
+    async def _aquery(self, query_bundle) -> Response:
         return self._query(query_bundle)
 
-    # ✅ requerido por la clase abstracta (para instrumentación/prompts)
     def _get_prompt_modules(self) -> Dict[str, Any]:
         return {}

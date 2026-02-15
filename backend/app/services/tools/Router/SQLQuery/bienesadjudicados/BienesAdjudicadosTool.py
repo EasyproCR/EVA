@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
-from urllib import response
+import logging
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from app.services.tools.Router.SQLQuery.filterbase import STOPWORDS, extraer_filtros
+
+logger = logging.getLogger(__name__)
 
 # ✅ Ajusta esta lista a tus columnas reales (DESCRIBE vw_get_all_properties;)
 DEFAULT_SELECT_COLS = [
@@ -49,6 +51,7 @@ class BienesDB:
     @staticmethod
     def build_engine(db_uri: str) -> Engine:
         # ✅ SiteGround/shared hosting: conexiones frágiles -> pre_ping + recycle corto
+        logger.info(f"Creando engine de BD para Bienes Adjudicados")
         return create_engine(
             db_uri,
             pool_pre_ping=True,
@@ -79,10 +82,22 @@ class BienesDB:
         - Filtros con LIKE (case-insensitive).
         - LIMIT forzado para evitar cargas.
         """
+        logger.info(f"\n{'='*60}")
+        logger.info(f"🔍 BÚSQUEDA EN BIENES ADJUDICADOS")
+        logger.info(f"{'='*60}")
+        logger.info(f"Query texto: {q}")
+        logger.info(f"Provincia: {provincia}, Cantón: {canton}, Tipo: {tipo}")
+        logger.info(f"Precio: {precio_min} - {precio_max}, Estado: {estado}")
+        
         # hard limits
         limit = max(1, min(int(limit), 50))
 
-        filtros_adicionales = filtros_adicionales or extraer_filtros(q or "")
+        # Extraer filtros del texto si no vienen explícitos
+        if q and not any([provincia, canton, tipo, precio_max]):
+            filtros_adicionales = filtros_adicionales or extraer_filtros(q)
+            provincia = provincia or filtros_adicionales.get("provincia")
+            precio_max = precio_max or filtros_adicionales.get("precio_max")
+            logger.info(f"Filtros extraídos del texto: {filtros_adicionales}")
 
         select_cols = ", ".join(f"`{c}`" for c in DEFAULT_SELECT_COLS)
 
@@ -94,14 +109,19 @@ class BienesDB:
                 where.append(f"LOWER(`{field}`) LIKE :{param_name}")
                 params[param_name] = f"%{value.lower()}%"
 
-            if q:
-                terms = [t.strip().lower() for t in q.split()
-                    if t.strip() and t.lower() not in STOPWORDS and len(t.strip()) >= 3]
+        # ✅ MEJORADO: Procesamiento de búsqueda de texto
+        if q:
+            # Limpiar y tokenizar
+            terms = [t.strip().lower() for t in q.split()
+                if t.strip() and t.lower() not in STOPWORDS and len(t.strip()) >= 2]  # ✅ Reducido a 2 caracteres mínimo
+            
+            logger.info(f"Términos de búsqueda después de filtrar stopwords: {terms}")
+            
+            # ✅ Si solo hay provincias/cantones como términos, no filtres tanto
+            has_meaningful_terms = any(t not in [p.lower() for p in ["san jose", "alajuela", "heredia", "cartago", "guanacaste", "puntarenas", "limon"]] for t in terms)
+            
+            if terms:
                 term_blocks = []
-
-                # ✅ Si no quedó nada útil, NO busques todo el catálogo
-                if not terms and not any([provincia, canton, tipo, estado, precio_min, precio_max]):
-                    return []
                 for i, term in enumerate(terms):
                     ors = []
                     for j, col in enumerate(TEXT_SEARCH_COLS):
@@ -109,9 +129,16 @@ class BienesDB:
                         ors.append(f"LOWER(`{col}`) LIKE :{pn}")
                         params[pn] = f"%{term}%"
                     term_blocks.append("(" + " OR ".join(ors) + ")")
+                
                 if term_blocks:
+                    # ✅ Usar OR entre términos para búsquedas más flexibles
                     where.append("(" + " OR ".join(term_blocks) + ")")
+            elif not any([provincia, canton, tipo, estado, precio_min, precio_max]):
+                # ✅ Si no hay términos útiles NI filtros, devolver vacío
+                logger.warning("⚠️ Búsqueda muy amplia sin filtros específicos - devolviendo vacío")
+                return []
 
+        # Filtros específicos
         add_like("provincia", provincia, "provincia")
         add_like("canton", canton, "canton")
         add_like("tipo_propiedad", tipo, "tipo_propiedad")
@@ -133,16 +160,32 @@ class BienesDB:
             FROM `vw_get_all_properties`
             WHERE {where_sql}
             ORDER BY ({price_expr} IS NULL), {price_expr} ASC
-
             LIMIT :limit
         """
-        print ("Ejecutando SQL:", sql)
-        print ("Con parámetros:", params)
-        with self.engine.connect() as conn:
-            rows = conn.execute(text(sql), params).mappings().all()
-
-        # devuelve lista de dicts serializable
-
-        if not rows:
-             return []
-        return [dict(r) for r in rows]
+        
+        logger.info(f"\n📝 SQL GENERADO:")
+        logger.info(f"{sql}")
+        logger.info(f"\n🔧 PARÁMETROS:")
+        logger.info(f"{params}")
+        
+        try:
+            with self.engine.connect() as conn:
+                rows = conn.execute(text(sql), params).mappings().all()
+            
+            logger.info(f"✓ Query ejecutado - {len(rows)} resultados encontrados")
+            
+            if not rows:
+                logger.warning("⚠️ No se encontraron resultados")
+                return []
+            
+            # Mostrar preview de resultados
+            if rows:
+                logger.info(f"\n📊 PREVIEW DE RESULTADOS (primeros 3):")
+                for i, row in enumerate(rows[:3], 1):
+                    logger.info(f"  {i}. {row.get('nombre')} - {row.get('provincia')}, {row.get('canton')} - ${row.get('precio_usd')}")
+            
+            return [dict(r) for r in rows]
+            
+        except Exception as e:
+            logger.error(f"❌ ERROR ejecutando query SQL: {e}", exc_info=True)
+            raise

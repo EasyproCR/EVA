@@ -3,7 +3,7 @@ Endpoints de IA - Heredan de IAServicio con decoradores elegantes
 Usa fastapi-class para Class-Based Views
 """
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, logger
 from fastapi import Depends, HTTPException
 from app.core.config import get_settings
 from app.schemas.chat import ChatRequest, ChatResponse, DeleteRequest
@@ -51,22 +51,47 @@ async def saludo(user_info: dict = Depends(get_user_info_dependency)) -> dict:
         "saludo": "Hola! Soy EVA, tu asistente de IA. ¿En qué puedo ayudarte hoy?"
     }
 
-@router.post("/eliminarMemoria")
+@router.delete("/eliminarMemoria")  # ✅ Cambiar a DELETE (o dejar POST)
 async def eliminar_memoria(
-    request: DeleteRequest,
+    http_req: Request,  # ✅ Para acceder al orchestrator
     user_info: dict = Depends(get_user_info_dependency),
     require_auth: None = Depends(require_auth_dependency),
-    delete_body: dict = Depends(validate_delete_body_dependency)
+    # ✅ SIN request, SIN delete_body
 ):
     """
-    Elimina la memoria/historial del bot para un usuario.
-    DELETE /api/eliminarMemoria
+    Elimina la memoria del chat para el usuario autenticado.
+    Usuario identificado por JWT - sin body.
     """
-    user_id = request.id if request.id else user_info.get("id", "")
+    
+    # ✅ Usuario del token (no del body que no existe)
+    user_id = user_info.get("id")
+    
+    if not user_id:
+        raise HTTPException(
+            status_code=401,
+            detail="Usuario no identificado"
+        )
+    
+    # ✅ Obtener orchestrator
+    orch = http_req.app.state.orch
+    
+    # ✅ REALMENTE eliminar la memoria
+    memoria_existia = user_id in orch.memories
+    
+    if memoria_existia:
+        del orch.memories[user_id]  # ← ESTO ES LO IMPORTANTE
+        
+        # Si tienes memory_timestamps del cleanup
+        if hasattr(orch, 'memory_timestamps') and user_id in orch.memory_timestamps:
+            del orch.memory_timestamps[user_id]
+        
+        logger.info(f"Memoria eliminada para usuario: {user_id}")
     
     return {
-        "message": f"Memoria eliminada para usuario {user_id}",
-        "success": True
+        "message": "Memoria eliminada exitosamente" if memoria_existia else "No había memoria",
+        "success": True,
+        "user_id": user_id,
+        "deleted": memoria_existia  # Info útil
     }
 
 @router.get("/health")

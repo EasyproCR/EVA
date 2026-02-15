@@ -9,6 +9,11 @@ from llama_index.embeddings.openai.base import OpenAIEmbedding
 from llama_index.core.memory import Memory
 from llama_index.core.llms import ChatMessage
 import uuid
+import logging
+import uuid
+from app.services.property_detector import detect_property_reference  # ✅ NUEVA
+from app.services.conversation_context import expand_contextual_question
+logger = logging.getLogger(__name__)
 
 class LlamaOrchestor:
     def __init__(self, settings):
@@ -20,6 +25,14 @@ class LlamaOrchestor:
             model=self.settings.openai_model, 
             max_tokens=self.settings.openai_max_tokens, 
             temperature=0.1,
+            system_prompt=(
+                "Responde en español. Tienes acceso a bases de datos como Easycore y Bienes Adjudicados y a un servicio externo de internet. "
+                "Elige la herramienta adecuada según la consulta del usuario. "
+                "Cuando generes consultas SQL para buscar personas por nombre, utiliza LIKE en vez de igualdad exacta. "
+                "Por ejemplo: WHERE nombre LIKE '%Silvia%' en vez de WHERE nombre = 'Silvia'. "
+                "Haz la búsqueda insensible a mayúsculas y busca tanto en nombre como en apellido. "
+                "Si el usuario da solo el nombre, busca coincidencias parciales en nombre y apellido. "
+            )
         )
 
         self.idUsuario= None
@@ -39,6 +52,7 @@ class LlamaOrchestor:
                 token_limit=20000
             )
         self.idUsuario = session_id
+    
         return self.memories[self.idUsuario]
 
     def procesar_mensaje(self, mensaje: str , session_id: str, nombreUsuario: str) -> str:
@@ -58,7 +72,10 @@ class LlamaOrchestor:
 
         # Tomar últimos turnos para contexto (evita prompts gigantes)
         last = chat_history[-10:]
+       
 
+        mensaje = detect_property_reference(mensaje, last)
+        mensaje = expand_contextual_question(mensaje, session_id)
         # Detectar si el usuario está haciendo referencia contextual
         ref_words = (
             "antes", "anterior", "eso", "lo anterior",
@@ -68,28 +85,30 @@ class LlamaOrchestor:
 
         usar_historial = any(w in mensaje.lower() for w in ref_words)
 
-        # Construir input para router
-        if usar_historial and last:
-            transcript = "\n".join(
-                [f"{m.role}: {m.content}" for m in last]
-            )
-            router_input = f"{transcript}\nuser: {mensaje}"
-        else:
-            router_input = mensaje
-
         # Routing (selector decide tool)
-        raw = self.router.query(router_input)
+        raw = self.router.query(mensaje if not usar_historial else "\n".join([f"{h.role}: {h.content}" for h in last]) + "\nUsuario: " + mensaje)
 
-        # Extraer respuesta
-        resp = raw.response if hasattr(raw, "response") else str(raw)
+        resp = raw.response if hasattr(raw, "response") else raw
+        
+        # seguridad: si por alguna razón llega bytes
+        if isinstance(resp, (bytes, bytearray)):
+            resp = resp.decode("utf-8", errors="replace")
 
-        # Guardar conversación en memoria
-        mem.put_messages([
+        resp = str(resp)
+
+        # Guardar en memoria (si no es tool)
+        if not self.router.is_tool_response(raw):
+            mem.put_messages([
             ChatMessage(role="user", content=f"{nombreUsuario}: {mensaje}"),
             ChatMessage(role="assistant", content=resp),
         ])
 
+        print("RAW TYPE:", type(raw))
+        print("RAW.RESPONSE TYPE:", type(getattr(raw, "response", None)))
+        print("RAW.RESPONSE REPR:", repr(getattr(raw, "response", None))[:300])
+
         return resp
+            
 
     def obtenerIDUsuario(self):
         return self.idUsuario
