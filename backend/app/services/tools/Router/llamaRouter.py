@@ -1,8 +1,5 @@
 from __future__ import annotations
 import logging
-from guardrails import settings
-from guardrails.integrations.llama_index import GuardrailsQueryEngine
-from app.core.aiConfig import build_guard
 from llama_index.core.query_engine import RouterQueryEngine
 from llama_index.core.selectors import PydanticSingleSelector
 from llama_index.core.tools import QueryEngineTool,ToolMetadata,FunctionTool
