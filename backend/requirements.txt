@@ -9,3 +9,4 @@ httpx==0.28.0
 PyJWT==2.8.0
 llama_index
 tavily-python 
+pymysql
