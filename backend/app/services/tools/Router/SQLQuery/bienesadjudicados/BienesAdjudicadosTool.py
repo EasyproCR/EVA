@@ -28,7 +28,8 @@ DEFAULT_SELECT_COLS = [
     "tamanio_lote",
     "imagen",
     "property_url",
-    "agent_name"
+    "agent_name",
+    "nombre_banco"
 ]
 
 # Columnas donde se aplica búsqueda por texto (LIKE)
