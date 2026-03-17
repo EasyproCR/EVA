@@ -7,6 +7,7 @@ import re
 import logging
 from typing import Optional, List
 from llama_index.core.llms import ChatMessage
+from app.services.tools.Router.General.query_preprocessor import get_preprocessor, QueryType
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +107,13 @@ class PropertyReferenceDetector:
         if any(keyword in mensaje_lower for keyword in internet_keywords):
             logger.info("⚠️ Detectado 'búsqueda en internet' - NO modificar con URL anterior")
             return False
+
+        # ❌ NO modificar si el usuario provee explícitamente un ID de propiedad
+        preprocessor = get_preprocessor()
+        query_type, property_id = preprocessor.analyze(mensaje)
+        if query_type == QueryType.PROPERTY_ID and property_id is not None:
+             logger.info(f"⚠️ Detectado ID explícito ({property_id}) - NO modificar con historial")
+             return False
 
         # ✅ Modificar SOLO si es claramente sobre la propiedad
         for pattern in self.DETAIL_PATTERNS:
