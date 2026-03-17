@@ -3,7 +3,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import get_settings
 from app.api.endpoints import router as ia_router
 from app.services.llamaOrchestor import LlamaOrchestor
-from app.store.session_store import SessionStore
 
 # Initialize settings
 settings = get_settings()

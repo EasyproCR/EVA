@@ -187,7 +187,82 @@ class PropertyDatabaseService:
         except Exception as e:
             logger.error(f"❌ Error consultando BD: {e}", exc_info=True)
             return None
-    
+
+    def get_property_by_id(self, property_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Busca una propiedad por su ID de base de datos.
+
+        Args:
+            property_id: ID único de la propiedad en la BD
+
+        Returns:
+            Dict con datos de la propiedad o None si no se encuentra
+        """
+        try:
+            logger.info(f"🔍 Buscando propiedad por ID: {property_id}")
+
+            query = text("""
+                SELECT
+                    nombre,
+                    provincia,
+                    canton,
+                    distrito,
+                    precio_usd,
+                    precio_local,
+                    tipo_propiedad,
+                    bedrooms,
+                    bathrooms,
+                    area_construccion,
+                    tamanio_lote,
+                    nombre_banco,
+                    tipo_oferta,
+                    agent_name,
+                    agent_phone_number,
+                    property_url,
+                    id
+                FROM vw_get_all_properties
+                WHERE id = :property_id
+                LIMIT 1
+            """)
+
+            with self.engine.connect() as conn:
+                result = conn.execute(
+                    query,
+                    {"property_id": property_id}
+                )
+                row = result.fetchone()
+
+                if row:
+                    property_data = {
+                        'nombre': row[0],
+                        'provincia': row[1],
+                        'canton': row[2],
+                        'distrito': row[3],
+                        'precio_usd': row[4],
+                        'precio_local': row[5],
+                        'tipo_propiedad': row[6],
+                        'bedrooms': row[7],
+                        'bathrooms': row[8],
+                        'area_construccion': row[9],
+                        'tamanio_lote': row[10],
+                        'nombre_banco': row[11],
+                        'tipo_oferta': row[12],
+                        'agent_name': row[13],
+                        'agent_phone_number': row[14],
+                        'property_url': row[15],
+                        'id': row[16],
+                    }
+
+                    logger.info(f"✓ Propiedad encontrada en BD: {property_data['nombre']} (ID: {property_id})")
+                    return property_data
+                else:
+                    logger.warning(f"⚠️ Propiedad no encontrada en BD para ID: {property_id}")
+                    return None
+
+        except Exception as e:
+            logger.error(f"❌ Error consultando BD: {e}", exc_info=True)
+            return None
+
     def _extract_slug_from_url(self, url: str) -> Optional[str]:
         """
         Extrae el slug de una URL de propiedad.

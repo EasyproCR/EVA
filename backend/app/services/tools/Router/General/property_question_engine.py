@@ -46,152 +46,245 @@ class PropertyQuestionEngine(BaseQueryEngine):
         """
         query = query_bundle.query_str
         logger.info(f"📋 Pregunta sobre propiedad: {query}")
-        
-        # Detectar tipo de pregunta
-        question_type = self._detect_question_type(query)
-        
-        if not question_type:
-            return Response(
-                response="No estoy seguro de qué información necesitas sobre la propiedad. "
-                "¿Podrías ser más específico?"
-            )
-        
-        logger.info(f"  Tipo detectado: {question_type}")
-        
+
         # Obtener datos de la propiedad
-        # Intentar extraer URL del query
-        urls = re.findall(r'https?://\S+', query)
         property_data = None
-        
-        if urls:
-            # Si hay URL en el query, buscar por URL
-            property_data = self.property_db_service.get_property_by_url(urls[0])
-        else:
-            # Si no, buscar por nombre en el query
+
+        # 1️⃣ Intentar extraer ID (primero, más específico)
+        property_id = self._extract_property_id(query)
+        if property_id is not None:
+            logger.info(f"  🆔 ID extraído: {property_id}")
+            property_data = self.property_db_service.get_property_by_id(property_id)
+
+        # 2️⃣ Si no encontró por ID, intentar extraer URL del query
+        if not property_data:
+            urls = re.findall(r'https?://\S+', query)
+            if urls:
+                # Si hay URL en el query, buscar por URL
+                property_data = self.property_db_service.get_property_by_url(urls[0])
+
+        # 3️⃣ Si no encontró por URL, buscar por nombre en el query
+        if not property_data:
             # Extraer posible nombre de propiedad
             name_match = re.search(r'(?:de|del|sobre)\s+["\']?([^"\'?]+)["\']?', query, re.IGNORECASE)
             if name_match:
                 property_name = name_match.group(1).strip()
                 property_data = self.property_db_service.get_property_by_name(property_name)
-        
+
+        # 4️⃣ Si no encontró, intentar usar contexto (última propiedad de la conversación)
+        if not property_data and self.context_manager:
+            logger.info(f"  📚 Intentando obtener propiedad del contexto...")
+            property_data = self.context_manager.get_last_property()
+            if property_data:
+                logger.info(f"  ✓ Propiedad obtenida del contexto: {property_data.get('nombre', 'N/A')}")
+
         if not property_data:
             return Response(
                 response=(
                     "No encontré información de esa propiedad en nuestra base de datos. "
-                    "¿Podrías proporcionar el enlace de la propiedad o más detalles?"
+                    "¿Podrías proporcionar el enlace de la propiedad, su ID o más detalles?"
                 )
             )
-        
+
+        # Detectar tipo de pregunta específica
+        question_type = self._detect_question_type(query)
+
+        # Si no hay tipo específico, mostrar resumen general
+        if not question_type:
+            return self._generate_property_summary(property_data)
+
         # Generar respuesta según el tipo de pregunta
         response_text = self._generate_answer(question_type, property_data)
-        
+
         return Response(response=response_text)
     
     def _detect_question_type(self, query: str) -> Optional[str]:
         """
         Detecta qué tipo de pregunta es.
-        
+
         Returns:
             str: Tipo de pregunta o None
         """
         query_lower = query.lower()
-        
+
         # Banco/Entidad
-        if re.search(r'\b(banco|entidad|institution|financiera)\b', query_lower):
+        if re.search(r'\b(banco|entidad|institution|financiera|que banco)\b', query_lower):
             return 'banco'
-        
+
         # Agente
-        if re.search(r'\b(agente|asesor|encargado|contacto|representante)\b', query_lower):
+        if re.search(r'\b(agente|asesor|encargado|contacto|representante|quien|esta a cargo)\b', query_lower):
             return 'agente'
-        
+
         # Precio
-        if re.search(r'\b(precio|costo|cuanto\s+cuesta|valor)\b', query_lower):
+        if re.search(r'\b(precio|costo|cuanto\s+cuesta|valor|cuanto\s+es|cual\s+es\s+el\s+precio)\b', query_lower):
             return 'precio'
-        
+
         # Habitaciones
-        if re.search(r'\b(habitacion|cuarto|dormitorio|bedroom)\b', query_lower):
+        if re.search(r'\b(habitacion|cuarto|dormitorio|bedroom|cuantas?\s+habitaciones|cuantos?\s+cuartos)\b', query_lower):
             return 'habitaciones'
-        
+
         # Baños
-        if re.search(r'\b(baño|bathroom)\b', query_lower):
+        if re.search(r'\b(baño|bathroom|cuantos?\s+banos|cuantos?\s+sanitarios)\b', query_lower):
             return 'banos'
-        
+
         # Ubicación
-        if re.search(r'\b(ubicacion|ubicada|direccion|donde|queda|esta)\b', query_lower):
+        if re.search(r'\b(ubicacion|ubicada|direccion|donde|queda|esta|donde\s+esta)\b', query_lower):
             return 'ubicacion'
-        
+
         # Área/Tamaño
-        if re.search(r'\b(area|tamaño|tamano|metros|m2|grande)\b', query_lower):
+        if re.search(r'\b(area|tamaño|tamano|metros|m2|m²|cuanto\s+mide|tamaño\s+del\s+lote)\b', query_lower):
             return 'area'
-        
+
         # Tipo
-        if re.search(r'\b(tipo|categoria|clase)\b', query_lower):
+        if re.search(r'\b(tipo|categoria|clase|que\s+es|es\s+un|cual\s+es\s+el\s+tipo)\b', query_lower):
             return 'tipo'
-        
+
         return None
-    
+
+    def _extract_property_id(self, query: str) -> Optional[int]:
+        """
+        Extrae ID de propiedad del query del usuario.
+
+        Detecta patrones como:
+        - "ID: 123" o "id: 123"
+        - "ID 123"
+        - "#ID 123"
+        - "propiedad 123" (cuando es número único)
+
+        Returns:
+            int: ID de la propiedad o None
+        """
+        query_lower = query.lower()
+
+        # Patrón 1: "ID: 123" o "id: 123"
+        match = re.search(r'\bid\s*[:=]?\s*(\d+)\b', query_lower)
+        if match:
+            property_id = int(match.group(1))
+            logger.info(f"  ✓ Patrón detectado: ID:{property_id}")
+            return property_id
+
+        # Patrón 2: "propiedad 123" (explícito)
+        match = re.search(r'\bpropiedad\s+(\d+)\b', query_lower)
+        if match:
+            property_id = int(match.group(1))
+            logger.info(f"  ✓ Patrón detectado: propiedad {property_id}")
+            return property_id
+
+        # Patrón 3: "#ID 123"
+        match = re.search(r'#\s*id\s+(\d+)\b', query_lower)
+        if match:
+            property_id = int(match.group(1))
+            logger.info(f"  ✓ Patrón detectado: #ID {property_id}")
+            return property_id
+
+        return None
+
+    def _generate_property_summary(
+        self,
+        property_data: Dict[str, Any]
+    ) -> Response:
+        """
+        Genera un resumen general cuando el usuario pregunta "dime información"
+        sin especificar qué información exacta necesita.
+        """
+        prop_name = property_data.get('nombre', 'La propiedad')
+        lines = [f"**{prop_name}**\n"]
+
+        # Tipo de propiedad
+        if property_data.get('tipo_propiedad'):
+            lines.append(f"Tipo: **{property_data['tipo_propiedad']}**")
+
+        # Ubicación
+        ubicacion_parts = []
+        if property_data.get('distrito'):
+            ubicacion_parts.append(property_data['distrito'])
+        if property_data.get('canton'):
+            ubicacion_parts.append(property_data['canton'])
+        if property_data.get('provincia'):
+            ubicacion_parts.append(property_data['provincia'])
+        if ubicacion_parts:
+            lines.append(f"Ubicacion: **{', '.join(ubicacion_parts)}**")
+
+        # Precio
+        if property_data.get('precio_usd'):
+            lines.append(f"Precio: **USD {float(property_data['precio_usd']):,.0f}**")
+        elif property_data.get('precio_local'):
+            lines.append(f"Precio local: **{float(property_data['precio_local']):,.0f}**")
+
+        # Características
+        if property_data.get('bedrooms'):
+            lines.append(f"Habitaciones: **{property_data['bedrooms']}**")
+        if property_data.get('bathrooms'):
+            lines.append(f"Banos: **{property_data['bathrooms']}**")
+
+        # Áreas
+        if property_data.get('area_construccion'):
+            lines.append(f"Area construccion: **{property_data['area_construccion']} m²**")
+        if property_data.get('tamanio_lote'):
+            lines.append(f"Tamanio del lote: **{property_data['tamanio_lote']} m²**")
+
+        # Banco y Agente
+        if property_data.get('nombre_banco'):
+            lines.append(f"\nBanco/Entidad: **{property_data['nombre_banco']}**")
+        if property_data.get('agent_name'):
+            agente_info = f"Agente: **{property_data['agent_name']}**"
+            if property_data.get('agent_phone_number'):
+                agente_info += f" | Tel: {property_data['agent_phone_number']}"
+            lines.append(agente_info)
+
+        return Response(response="\n".join(lines))
+
     def _generate_answer(
         self,
         question_type: str,
         property_data: Dict[str, Any]
     ) -> str:
         """
-        Genera respuesta específica según el tipo de pregunta.
+        Genera respuesta ESPECIFICA según el tipo de pregunta.
+        Solo devuelve lo solicitado, sin información extra.
         """
         prop_name = property_data.get('nombre', 'La propiedad')
-        
+
         if question_type == 'banco':
             banco = property_data.get('nombre_banco')
             if banco:
-                return (
-                    f"**{prop_name}** pertenece a **{banco}**.\n\n"
-                    f"Para más información sobre el proceso de adquisición, "
-                    f"te recomiendo contactar directamente con el banco o el agente a cargo."
-                )
+                return f"**{prop_name}** pertenece a **{banco}**."
             else:
-                return f"No tengo información del banco para **{prop_name}** en nuestra base de datos."
-        
+                return f"No hay información del banco para **{prop_name}**."
+
         elif question_type == 'agente':
             agent_name = property_data.get('agent_name')
             agent_phone = property_data.get('agent_phone_number')
-            
+
             if agent_name:
-                response = f"El agente a cargo de **{prop_name}** es **{agent_name}**"
+                response = f"El agente es **{agent_name}**"
                 if agent_phone:
-                    response += f" 📞 **{agent_phone}**"
-                response += ".\n\n¿Necesitas que te ayude con algo más sobre esta propiedad?"
+                    response += f" | Tel: {agent_phone}"
                 return response
             else:
-                return f"No tengo información del agente para **{prop_name}** en nuestra base de datos."
-        
+                return "No hay información del agente disponible."
+
         elif question_type == 'precio':
             precio = property_data.get('precio_usd')
             if precio:
-                return (
-                    f"El precio de **{prop_name}** es **USD {precio:,.0f}**.\n\n"
-                    f"Este precio puede estar sujeto a negociación dependiendo del banco/entidad. "
-                    f"¿Te gustaría conocer más detalles sobre esta propiedad?"
-                )
+                return f"**USD {float(precio):,.0f}**"
             else:
-                return (
-                    f"El precio de **{prop_name}** no está disponible en nuestra base de datos. "
-                    f"Te recomiendo contactar al agente directamente para obtener información actualizada."
-                )
-        
+                return "La información del precio no está disponible."
+
         elif question_type == 'habitaciones':
             bedrooms = property_data.get('bedrooms')
             if bedrooms:
-                return f"**{prop_name}** tiene **{bedrooms} habitaciones**."
+                return f"**{bedrooms} habitaciones**"
             else:
-                return f"No tengo información sobre el número de habitaciones de **{prop_name}**."
-        
+                return "No hay información sobre habitaciones."
+
         elif question_type == 'banos':
             bathrooms = property_data.get('bathrooms')
             if bathrooms:
-                return f"**{prop_name}** tiene **{bathrooms} baños**."
+                return f"**{bathrooms} baños**"
             else:
-                return f"No tengo información sobre el número de baños de **{prop_name}**."
-        
+                return "No hay información sobre baños."
+
         elif question_type == 'ubicacion':
             ubicacion_parts = []
             if property_data.get('distrito'):
@@ -200,39 +293,35 @@ class PropertyQuestionEngine(BaseQueryEngine):
                 ubicacion_parts.append(property_data['canton'])
             if property_data.get('provincia'):
                 ubicacion_parts.append(property_data['provincia'])
-            
+
             if ubicacion_parts:
                 ubicacion = ', '.join(ubicacion_parts)
-                return (
-                    f"**{prop_name}** está ubicada en **{ubicacion}**.\n\n"
-                    f"¿Te gustaría conocer más detalles sobre la zona o la propiedad?"
-                )
+                return f"**{ubicacion}**"
             else:
-                return f"No tengo información detallada de la ubicación de **{prop_name}**."
-        
+                return "No hay información de ubicación disponible."
+
         elif question_type == 'area':
             area_const = property_data.get('area_construccion')
             area_lote = property_data.get('tamanio_lote')
-            
-            response = f"**{prop_name}**:"
-            
+
+            parts = []
             if area_const:
-                response += f"\n• Área de construcción: **{area_const} m²**"
+                parts.append(f"Área construcción: **{area_const} m²**")
             if area_lote:
-                response += f"\n• Tamaño del lote: **{area_lote} m²**"
-            
-            if not area_const and not area_lote:
-                response = f"No tengo información sobre las áreas de **{prop_name}**."
-            
-            return response
-        
+                parts.append(f"Tamaño lote: **{area_lote} m²**")
+
+            if parts:
+                return " | ".join(parts)
+            else:
+                return "No hay información sobre áreas disponible."
+
         elif question_type == 'tipo':
             tipo = property_data.get('tipo_propiedad')
             if tipo:
-                return f"**{prop_name}** es un/a **{tipo}**."
+                return f"**{tipo}**"
             else:
-                return f"No tengo información sobre el tipo de **{prop_name}**."
-        
+                return "No hay información sobre el tipo de propiedad."
+
         return "No pude encontrar esa información específica."
     
     async def _aquery(self, query_bundle: QueryBundle) -> Response:

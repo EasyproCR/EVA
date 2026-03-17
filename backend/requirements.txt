@@ -14,3 +14,4 @@ llama-index-embeddings-openai==0.5.1
 tavily-python == 0.7.21
 pymysql== 1.1.2
 sqlalchemy==2.0.46
+guardrails-ai>=0.5.10

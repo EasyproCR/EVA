@@ -1,18 +1,15 @@
-from urllib import response
-import openai 
+import logging
 from app.core.config import get_settings
 from llama_index.llms.openai import OpenAI
-from llama_index.core import Settings 
+from llama_index.core import Settings
 from app.services.tools.Router import llamaRouter
 from app.data import evaPrompt
 from llama_index.embeddings.openai.base import OpenAIEmbedding
 from llama_index.core.memory import Memory
 from llama_index.core.llms import ChatMessage
-import uuid
-import logging
-import uuid
-from app.services.property_detector import detect_property_reference  # ✅ NUEVA
+from app.services.property_detector import detect_property_reference
 from app.services.conversation_context import expand_contextual_question
+
 logger = logging.getLogger(__name__)
 
 class LlamaOrchestor:
@@ -96,19 +93,14 @@ class LlamaOrchestor:
 
         resp = str(resp)
 
-        # Guardar en memoria (si no es tool)
-        if not self.router.is_tool_response(raw):
+  # Guardar en memoria (si no es tool)
+       # Guardar en memoria (si no es tool)
+        if not self.router.is_tool_response(resp):
             mem.put_messages([
-            ChatMessage(role="user", content=f"{nombreUsuario}: {mensaje}"),
-            ChatMessage(role="assistant", content=resp),
-        ])
-
-        print("RAW TYPE:", type(raw))
-        print("RAW.RESPONSE TYPE:", type(getattr(raw, "response", None)))
-        print("RAW.RESPONSE REPR:", repr(getattr(raw, "response", None))[:300])
-
+                ChatMessage(role="user", content=f"{nombreUsuario}: {mensaje}"),
+                ChatMessage(role="assistant", content=resp),
+            ])
         return resp
-            
-
+    
     def obtenerIDUsuario(self):
         return self.idUsuario

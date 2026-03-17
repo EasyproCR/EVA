@@ -32,14 +32,21 @@ class BienesQueryEngine(BaseQueryEngine):
         # ✅ NUEVO: Formatear resultados con sugerencias
         lines = ["**Resultados:**\n"]
         
-        for i, r in enumerate(rows[:10], 1):  # ✅ Numerados
+        for i, r in enumerate(rows[:10], 1):
             precio = r.get('precio_usd')
             precio_str = f"USD {float(precio):,.0f}" if precio else "Precio no disponible"
-            
+            banco = r.get('nombre_banco') or "Banco no disponible"
+            agente = r.get('agent_name') or "N/D"
+            tipo = r.get('tipo_propiedad') or ""
+            property_id = r.get('id') or "N/D"
+
             lines.append(
-                f"{i}. **{r.get('nombre')}** | "
+                f"{i}. **{r.get('nombre')}** | {tipo} | "
                 f"{r.get('provincia')}, {r.get('canton')} | "
                 f"{precio_str} | "
+                f"🏦 {banco} | "
+                f"👤 {agente} | "
+                f"🔑 ID:{property_id} | "
                 f"[Ver en web]({r.get('property_url')})"
             )
         
@@ -48,6 +55,7 @@ class BienesQueryEngine(BaseQueryEngine):
         lines.append("💡 **¿Quieres más detalles?**")
         lines.append("Puedes decirme:")
         lines.append("• _\"Dime más sobre la #1\"_ (para cualquier número)")
+        lines.append("• _\"Info de la propiedad ID 123\"_ (para buscar por ID)")
         lines.append("• _\"Info detallada del terreno en Moravia\"_ (por nombre/ubicación)")
         lines.append("• _O pega el enlace directo para análisis completo_")
 

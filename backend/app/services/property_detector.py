@@ -21,13 +21,22 @@ class PropertyReferenceDetector:
         modified_msg = detector.detect_and_modify(mensaje, chat_history)
     """
     
-    # Patrones que indican solicitud de más detalles
+    # Patrones que indican solicitud de más detalles SOBRE LA PROPIEDAD ANTERIOR
+    # ⚠️ IMPORTANTE: Estos son más restrictivos para evitar confundir con búsquedas nuevas
     DETAIL_PATTERNS = [
-        r'\b(?:dime|dame|quiero|necesito|muestra|ver)\s+(?:más|mas|info|información|detalles?)\b',
-        r'\b(?:sobre|de|del)\s+(?:la|el|esa|ese|esta|este)\b',
-        r'\b(?:ampliar|expandir|profundiza|profundizar)\b',
-        r'\b(?:primera?|segunda?|tercera?|[0-9]+[aº°]?)\b',
+        # Frases que claramente piden más detalles: "dime más", "más información"
+        r'\b(?:dime|dame|quiero|necesito|muestra|ver|dame)\s+(?:más|mas)\b(?!.*(?:busca|en\s+internet|googl))',
+
+        # Frases sobre "esa/ese/esta/este" (referencia clara a lo anterior)
+        r'\b(?:sobre|de|del)\s+(?:esa|ese|esta|este)\b',
+        r'\b(?:esa|ese|esta|este)\s+propiedad\b',
+
+        # Referencias numéricas: "#1", "primera", "segunda"
         r'\b#[0-9]+\b',
+        r'\b(?:primer|segunda|tercer|cuart|quint|sext)(?:a|o|os|as)?\b(?=.*propiedad)',
+
+        # "ampliar", "expandir", "profundizar"
+        r'\b(?:ampliar|expandir|profundiza|profundizar)\b',
     ]
     
     # Ordinales en español
@@ -89,13 +98,20 @@ class PropertyReferenceDetector:
         return modified_msg
     
     def _is_detail_request(self, mensaje: str) -> bool:
-        """Verifica si el mensaje solicita más detalles."""
+        """Verifica si el mensaje solicita más detalles de la propiedad anterior."""
         mensaje_lower = mensaje.lower()
-        
+
+        # ❌ NO modificar si el usuario está pidiendo búsqueda en internet
+        internet_keywords = ["busca en internet", "busca en google", "qué dice internet", "internet sobre"]
+        if any(keyword in mensaje_lower for keyword in internet_keywords):
+            logger.info("⚠️ Detectado 'búsqueda en internet' - NO modificar con URL anterior")
+            return False
+
+        # ✅ Modificar SOLO si es claramente sobre la propiedad
         for pattern in self.DETAIL_PATTERNS:
             if re.search(pattern, mensaje_lower):
                 return True
-        
+
         return False
     
     def _extract_urls_from_history(
