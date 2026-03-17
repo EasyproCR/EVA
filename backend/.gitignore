@@ -34,3 +34,5 @@ Thumbs.db
 
 *.pid
 *.pid.lock
+
+*.sh

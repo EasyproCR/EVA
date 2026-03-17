@@ -254,7 +254,6 @@ class LlamaRouter:
                         "🌐 BÚSQUEDA EN SITIO WEB BIENESADJUDICADOSCR.COM\n\n"
                         "USAR SOLO CUANDO:\n"
                         "- Usuario proporciona un enlace específico de bienesadjudicadoscr.com\n"
-                        "- Usuario menciona un código de propiedad específico del sitio\n"
                         "- Necesitas detalles que solo están en la página web pública\n\n"
                         "NO USAR para búsquedas generales de propiedades (usa 'bienes_adjudicados')\n"
                         "RESTRICCIÓN: Solo accede a URLs de bienesadjudicadoscr.com"

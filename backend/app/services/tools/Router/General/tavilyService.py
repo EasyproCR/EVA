@@ -114,7 +114,6 @@ class TavilyBienesQueryEngine(BaseQueryEngine):
 
         # Extraer URLs del query
         urls = re.findall(r"https?://\S+", query)
-        target_url = BASE_URL
         
         if urls:
             allowed = [u for u in urls if self._is_allowed_url(u)]
@@ -123,11 +122,19 @@ class TavilyBienesQueryEngine(BaseQueryEngine):
                 return Response(
                     response=(
                         "Solo puedo buscar dentro de **bienesadjudicadoscr.com**. "
-                        "Por favor proporciona un enlace de ese sitio."
+                        "Por favor proporciona un enlace válido de ese sitio."
                     )
                 )
             target_url = allowed[0]
             logger.info(f"🎯 URL objetivo: {target_url}")
+        else:
+            logger.warning(f"⚠️ No se detectó ninguna URL en la consulta")
+            return Response(
+                response=(
+                    "Para buscar información en la web, necesito que me proporciones "
+                    "el enlace (URL) específico de la propiedad en bienesadjudicadoscr.com"
+                )
+            )
 
         try:
             # ============================================================
