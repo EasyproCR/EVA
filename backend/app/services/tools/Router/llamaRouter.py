@@ -1,6 +1,7 @@
 from __future__ import annotations
 import logging
 from llama_index.core.query_engine import RouterQueryEngine
+from llama_index.core.schema import QueryBundle
 from llama_index.core.selectors import PydanticSingleSelector
 from llama_index.core.tools import QueryEngineTool, ToolMetadata
 from app.services.tools.Router.SQLQuery.llamaSQLquery import LlamaSQLQuery
@@ -12,6 +13,7 @@ from app.services.tools.Router.SQLQuery.bienesadjudicados.propertydbservice impo
 from app.services.tools.Router.General.general_query_engine import GeneralQueryEngine
 from app.services.tools.Router.General.tavilyService import TavilyBienesQueryEngine
 from app.services.tools.Router.General.property_question_engine import PropertyQuestionEngine
+from app.services.tools.Router.General.query_preprocessor import QueryPreprocessor, QueryType
 from app.services.conversation_context import ConversationContext
 from app.data import easycoreContext
 from app.services.tools.Router.InternetSearchEngine import InternetSearchEngine
@@ -54,6 +56,7 @@ class LlamaRouter:
         self.property_db_service = PropertyDatabaseService(
             connection_uri=_get_conn_uri(settings, "DB_URI_BIENES")
         )
+        self.query_preprocessor = QueryPreprocessor()
         logger.info("Inicializando LlamaRouter...")
 
         # -------- SQL tool 1 (DB1 - Bienes Adjudicados) --------
@@ -199,6 +202,9 @@ class LlamaRouter:
                 property_db_service=self.property_db_service,
                 context_manager=self.context_manager
             )
+            # Guardar referencia al engine para uso en pre-procesador
+            self.property_question_engine = property_question_engine
+
             property_info_tool = QueryEngineTool(
                 query_engine=property_question_engine,
                 metadata=ToolMetadata(
@@ -228,6 +234,7 @@ class LlamaRouter:
                     ),
                 ),
             )
+            self.property_info_tool = property_info_tool
             logger.info("✓ Tool 'property_info' configurado correctamente")
         except Exception as e:
             logger.error(f"✗ Error configurando property_info: {e}")
@@ -294,12 +301,33 @@ class LlamaRouter:
 
     # -------- Main API --------
     def query(self, user_query: str):
-        """Ejecuta query con logging detallado"""
+        """
+        Ejecuta query con pre-procesamiento inteligente.
+
+        1. Pre-procesa la consulta para detectar patrones específicos (ej: IDs de propiedades)
+        2. Si detecta un patrón, enruta DIRECTAMENTE a la herramienta específica
+        3. Si no detecta patrón, usa el router LLaMA normal
+        """
         logger.info(f"\n{'='*60}")
         logger.info(f"📥 NUEVA CONSULTA: {user_query}")
         logger.info(f"{'='*60}")
 
         try:
+            # 1️⃣ PRE-PROCESAMIENTO: Detectar patrones específicos
+            query_type, property_id = self.query_preprocessor.analyze(user_query)
+
+            # 2️⃣ Si detectó ID de propiedad, ENRUTA DIRECTO a property_info
+            if query_type == QueryType.PROPERTY_ID:
+                logger.info(f"🎯 ENRUTAMIENTO DIRECTO: Property ID #{property_id}")
+                from llama_index.core.schema import QueryBundle
+                query_bundle = QueryBundle(query_str=user_query)
+                response = self.property_question_engine._query(query_bundle)
+                logger.info(f"🔧 Tool seleccionado: property_info (directo por ID)")
+                logger.info(f"📤 Respuesta generada (primeros 200 chars): {str(response)[:200]}...")
+                return response
+
+            # 3️⃣ Si NO detectó patrón, usa ROUTER NORMAL (LLaMA selector)
+            logger.info(f"🚀 ENRUTAMIENTO NORMAL: Pasando al router LLaMA...")
             response = self.router.query(user_query)
 
             selected_tool = "desconocido"
