@@ -74,7 +74,18 @@ class ChatService {
     }
 
     async getPrimerMensaje() {
-        const bienvenida = await fetch(`${BASE_URL}/saludo`);
+        const token = localStorage.getItem('chat_token');
+        const headers = {
+            'Content-Type': 'application/json',
+        };
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+
+        const bienvenida = await fetch(`${BASE_URL}/saludo`, {
+            method: 'GET',
+            headers: headers,
+        });
         const data = await bienvenida.json();
         return data.saludo;
 

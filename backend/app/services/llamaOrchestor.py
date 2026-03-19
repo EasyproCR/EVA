@@ -17,10 +17,10 @@ class LlamaOrchestor:
         self.settings = settings
         
         
-        Settings.llm= OpenAI( 
-            api_key=self.settings.openai_api_key, 
-            model=self.settings.openai_model, 
-            max_tokens=self.settings.openai_max_tokens, 
+        Settings.llm= OpenAI(
+            api_key=self.settings.openai_api_key,
+            model=self.settings.openai_model,
+            max_tokens=self.settings.openai_max_tokens,
             temperature=0.1,
             system_prompt=(
                 "Responde en español. Tienes acceso a bases de datos como Easycore y Bienes Adjudicados y a un servicio externo de internet. "
@@ -52,7 +52,7 @@ class LlamaOrchestor:
     
         return self.memories[self.idUsuario]
 
-    def procesar_mensaje(self, mensaje: str , session_id: str, nombreUsuario: str) -> str:
+    def procesar_mensaje(self, mensaje: str , session_id: str, nombreUsuario: str, user_roles: list[str] | None = None) -> str:
         """
         Procesa un mensaje usando routing + memoria por sesión.
 
@@ -60,6 +60,25 @@ class LlamaOrchestor:
         - Memoria se usa cuando el usuario hace referencias contextuales.
         - Guarda user + assistant en memoria.
         """
+
+        # Actualizar system prompt dinámicamente con el nombre del usuario
+        user_context = f"Estás conversando con {nombreUsuario}. " if nombreUsuario else "Estás conversando con el usuario. "
+        dynamic_system_prompt = (
+            f"{user_context}"
+            "Responde en español. Tienes acceso a bases de datos como Easycore y Bienes Adjudicados y a un servicio externo de internet. "
+            "Elige la herramienta adecuada según la consulta del usuario. "
+            "Cuando generes consultas SQL para buscar personas por nombre, utiliza LIKE en vez de igualdad exacta. "
+            "Por ejemplo: WHERE nombre LIKE '%Silvia%' en vez de WHERE nombre = 'Silvia'. "
+            "Haz la búsqueda insensible a mayúsculas y busca tanto en nombre como en apellido. "
+            "Si el usuario da solo el nombre, busca coincidencias parciales en nombre y apellido. "
+        )
+        Settings.llm = OpenAI(
+            api_key=self.settings.openai_api_key,
+            model=self.settings.openai_model,
+            max_tokens=self.settings.openai_max_tokens,
+            temperature=0.1,
+            system_prompt=dynamic_system_prompt
+        )
 
         # Obtener memoria de la sesión
         mem = self._mem(session_id)
@@ -69,7 +88,7 @@ class LlamaOrchestor:
 
         # Tomar últimos turnos para contexto (evita prompts gigantes)
         last = chat_history[-10:]
-       
+
 
         mensaje = detect_property_reference(mensaje, last)
         mensaje = expand_contextual_question(mensaje, session_id)
@@ -83,7 +102,8 @@ class LlamaOrchestor:
         usar_historial = any(w in mensaje.lower() for w in ref_words)
 
         # Routing (selector decide tool)
-        raw = self.router.query(mensaje if not usar_historial else "\n".join([f"{h.role}: {h.content}" for h in last]) + "\nUsuario: " + mensaje)
+        query_text = mensaje if not usar_historial else "\n".join([f"{h.role}: {h.content}" for h in last]) + "\nUsuario: " + mensaje
+        raw = self.router.query(query_text, user_roles=user_roles or [])
 
         resp = raw.response if hasattr(raw, "response") else raw
         
