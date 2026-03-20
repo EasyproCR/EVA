@@ -293,25 +293,26 @@ class PropertyDatabaseService:
             logger.error(f"Error extrayendo slug: {e}")
             return None
     
-    def format_property_data_for_llm(self, property_data: Dict[str, Any]) -> str:
+    def format_property_data_for_llm(self, property_data: Dict[str, Any], for_public_content: bool = False) -> str:
         """
         Formatea datos de propiedad para que el LLM los use.
-        
+
         Args:
             property_data: Diccionario con datos de la propiedad
-            
+            for_public_content: Si True, omite info sensible del banco y agente (para posts públicos)
+
         Returns:
             Texto formateado con los datos
         """
         if not property_data:
             return ""
-        
+
         lines = ["DATOS DE LA BASE DE DATOS:\n"]
-        
+
         # Información básica
         if property_data.get('nombre'):
             lines.append(f"• Nombre: {property_data['nombre']}")
-        
+
         # Ubicación
         ubicacion_parts = []
         if property_data.get('distrito'):
@@ -320,47 +321,48 @@ class PropertyDatabaseService:
             ubicacion_parts.append(property_data['canton'])
         if property_data.get('provincia'):
             ubicacion_parts.append(property_data['provincia'])
-        
+
         if ubicacion_parts:
             lines.append(f"• Ubicación: {', '.join(ubicacion_parts)}")
-        
+
         # Precio
         if property_data.get('precio_usd'):
             precio_formatted = f"USD {float(property_data['precio_usd']):,.0f}"
             lines.append(f"• Precio: {precio_formatted}")
         elif property_data.get('precio_local'):
             lines.append(f"• Precio local: {float(property_data['precio_local']):,.0f}")
-        
+
         # Características
         if property_data.get('tipo_propiedad'):
             lines.append(f"• Tipo: {property_data['tipo_propiedad']}")
-        
+
         if property_data.get('bedrooms'):
             lines.append(f"• Habitaciones: {property_data['bedrooms']}")
-        
+
         if property_data.get('bathrooms'):
             lines.append(f"• Baños: {property_data['bathrooms']}")
-        
+
         if property_data.get('area_construccion'):
             lines.append(f"• Área construcción: {property_data['area_construccion']} m²")
-        
+
         if property_data.get('tamanio_lote'):
             lines.append(f"• Tamaño lote: {property_data['tamanio_lote']} m²")
-        
-        # Información institucional (LO MÁS IMPORTANTE)
-        if property_data.get('nombre_banco'):
-            lines.append(f"• **Banco/Entidad**: {property_data['nombre_banco']}")
-        
-        if property_data.get('tipo_oferta'):
-            lines.append(f"• Tipo de oferta: {property_data['tipo_oferta']}")
-        
-        # Agente
-        if property_data.get('agent_name'):
-            lines.append(f"• **Agente a cargo**: {property_data['agent_name']}")
-            
-            if property_data.get('agent_phone_number'):
-                lines.append(f"• **Teléfono del agente**: {property_data['agent_phone_number']}")
-        
+
+        # Información institucional (solo si es para uso privado/interno)
+        if not for_public_content:
+            if property_data.get('nombre_banco'):
+                lines.append(f"• **Banco/Entidad**: {property_data['nombre_banco']}")
+
+            if property_data.get('tipo_oferta'):
+                lines.append(f"• Tipo de oferta: {property_data['tipo_oferta']}")
+
+            # Agente (solo para uso privado)
+            if property_data.get('agent_name'):
+                lines.append(f"• **Agente a cargo**: {property_data['agent_name']}")
+
+                if property_data.get('agent_phone_number'):
+                    lines.append(f"• **Teléfono del agente**: {property_data['agent_phone_number']}")
+
         return "\n".join(lines)
 
 
