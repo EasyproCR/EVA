@@ -33,19 +33,32 @@ async def chat(
     orch = http_req.app.state.orch 
  
     print(f"[DEBUG] user_info id: {user_info.get('id', '')}")
-    response_obj = orch.procesar_mensaje(mensaje_limpio or request.mensaje , session_id=user_info.get("id", ""), nombreUsuario=user_info.get("nombre", ""))
+    response_obj = orch.procesar_mensaje(
+        mensaje_limpio or request.mensaje,
+        session_id=user_info.get("id", ""),
+        nombreUsuario=user_info.get("nombre", ""),
+        user_roles=user_info.get("roles", []),
+    )
     response_text = str(response_obj)
     return ChatResponse(respuesta=response_text, id=user_info.get("id", ""))
 
 @router.get("/saludo")
-async def saludo(user_info: dict = Depends(get_user_info_dependency)) -> dict:
+async def saludo(
+    user_info: dict = Depends(get_user_info_dependency),
+    nombre: str = None
+) -> dict:
     """
     Endpoint de saludo inicial.
-    GET /api/saludo
+    GET /api/saludo?nombre=Juan
     """
-    if  user_info.get("authenticated"):
+    # Intenta obtener nombre del query param, si no está, del token
+    nombre_final = (nombre or "").strip()
+    if not nombre_final:
+        nombre_final = (user_info.get('nombre', '') or "").strip()
+
+    if nombre_final:
         return {
-            "saludo": f"Hola {user_info.get('nombre', '')}! Soy EVA, tu asistente de IA. ¿En qué puedo ayudarte hoy?"
+            "saludo": f"Hola {nombre_final}! Soy EVA, tu asistente de IA. ¿En qué puedo ayudarte hoy?"
         }
     return {
         "saludo": "Hola! Soy EVA, tu asistente de IA. ¿En qué puedo ayudarte hoy?"

@@ -16,6 +16,7 @@ from app.services.tools.Router.General.property_question_engine import PropertyQ
 from app.services.tools.Router.General.query_preprocessor import QueryPreprocessor, QueryType
 from app.services.conversation_context import ConversationContext
 from app.data import easycoreContext
+from app.data.easycoreRoleAccess import build_role_scoped_catalog, normalize_roles
 from app.services.tools.Router.InternetSearchEngine import InternetSearchEngine
 
 # Configurar logging
@@ -130,36 +131,11 @@ class LlamaRouter:
         # -------- SQL tool 2 (DB2 - Easycore) --------
         try:
             db2_uri = _get_conn_uri(settings, db2_key)
-            db2_sql_db = LlamaSQLQuery(db2_uri).get_sql_database()
-            db2_engine = RetrieverSQL(
-                db2_sql_db,
-                table_catalog=easycoreContext.TABLE_CATALOG_EASYCORE,
-                config=TableRetrieverConfig(similarity_top_k=6),
-            ).get_query_engine()
+            self.db2_sql_db = LlamaSQLQuery(db2_uri).get_sql_database()
+            self.easycore_base_catalog = easycoreContext.TABLE_CATALOG_EASYCORE
+            self.easycore_tool_cache = {}
 
-            sql_db2_tool = QueryEngineTool(
-                query_engine=db2_engine,
-                metadata=ToolMetadata(
-                    name="easycore",
-                    description=(
-                        "💼 BASE DE DATOS INTERNA EASYCORE - OPERACIONES DE NEGOCIO\n\n"
-                        "USAR CUANDO el usuario pregunta sobre:\n"
-                        "- Usuarios, clientes, empleados, contactos\n"
-                        "- Ventas, transacciones, facturas, pagos\n"
-                        "- Inventario, productos, stock\n"
-                        "- Reportes operativos internos\n"
-                        "- Datos de personas (nombres, emails, teléfonos)\n"
-                        "- Información corporativa o administrativa\n\n"
-                        "EJEMPLOS:\n"
-                        "✅ 'correo de Adrian Murillo'\n"
-                        "✅ 'ventas del mes pasado'\n"
-                        "✅ 'usuarios registrados esta semana'\n"
-                        "✅ 'inventario de producto X'\n\n"
-                        "NO USAR para propiedades o bienes raíces.\n"
-                        "IMPORTANTE: Para nombres de personas, usa LIKE parcial, no igualdad exacta."
-                    ),
-                )
-            )
+            sql_db2_tool = self._build_easycore_tool_for_roles(["administrator"])
             logger.info("✓ Tool 'easycore' configurado correctamente")
         except Exception as e:
             logger.error(f"✗ Error configurando easycore: {e}")
@@ -290,16 +266,65 @@ class LlamaRouter:
             logger.error(f"✗ Error configurando internet_search: {e}")
             raise
 
-      # -------- Router --------
-        self.tools = [sql_db1_tool, banks_tool, sql_db2_tool, general_tool, property_info_tool, internet_tool, internet_search_tool]
+        # -------- Router --------
+        self.base_tools = [sql_db1_tool, banks_tool, general_tool, property_info_tool, internet_tool, internet_search_tool]
+        self.default_tools = [*self.base_tools, sql_db2_tool]
         self.router = RouterQueryEngine(
             selector=PydanticSingleSelector.from_defaults(),
-            query_engine_tools=self.tools,
+            query_engine_tools=self.default_tools,
         )
-        logger.info(f"✓ Router inicializado con {len(self.tools)} herramientas")
+        logger.info(f"✓ Router inicializado con {len(self.default_tools)} herramientas")
+
+    def _easycore_tool_description(self, allowed_tables: list[str]) -> str:
+        return (
+            "💼 BASE DE DATOS INTERNA EASYCORE - OPERACIONES DE NEGOCIO\n\n"
+            "USAR CUANDO el usuario pregunta sobre:\n"
+            "- Usuarios, clientes, empleados, contactos\n"
+            "- Ventas, transacciones, facturas, pagos\n"
+            "- Inventario, productos, stock\n"
+            "- Reportes operativos internos\n"
+            "- Datos de personas (nombres, emails, teléfonos)\n"
+            "- Información corporativa o administrativa\n\n"
+            "EJEMPLOS:\n"
+            "✅ 'correo de Adrian Murillo'\n"
+            "✅ 'ventas del mes pasado'\n"
+            "✅ 'usuarios registrados esta semana'\n"
+            "✅ 'inventario de producto X'\n\n"
+            "NO USAR para propiedades o bienes raíces.\n"
+            "IMPORTANTE: Para nombres de personas, usa LIKE parcial, no igualdad exacta.\n"
+            f"TABLAS PERMITIDAS PARA ESTE ROL: {', '.join(allowed_tables) if allowed_tables else 'ninguna'}"
+        )
+
+    def _build_easycore_tool_for_roles(self, user_roles: list[str] | None) -> QueryEngineTool:
+        scoped_catalog = build_role_scoped_catalog(self.easycore_base_catalog, user_roles)
+        cache_key = "|".join(sorted(scoped_catalog.keys()))
+
+        if cache_key in self.easycore_tool_cache:
+            return self.easycore_tool_cache[cache_key]
+
+        db2_engine = RetrieverSQL(
+            self.db2_sql_db,
+            table_catalog=scoped_catalog,
+            config=TableRetrieverConfig(similarity_top_k=6),
+        ).get_query_engine()
+
+        tool = QueryEngineTool(
+            query_engine=db2_engine,
+            metadata=ToolMetadata(
+                name="easycore",
+                description=self._easycore_tool_description(sorted(scoped_catalog.keys())),
+            ),
+        )
+
+        self.easycore_tool_cache[cache_key] = tool
+        return tool
+
+    def _tools_for_roles(self, user_roles: list[str] | None):
+        scoped_easycore_tool = self._build_easycore_tool_for_roles(user_roles)
+        return [*self.base_tools, scoped_easycore_tool]
 
     # -------- Main API --------
-    def query(self, user_query: str):
+    def query(self, user_query: str, session_id: str = None, user_roles: list[str] | None = None):
         """
         Ejecuta query con pre-procesamiento inteligente.
 
@@ -309,6 +334,7 @@ class LlamaRouter:
         """
         logger.info(f"\n{'='*60}")
         logger.info(f"📥 NUEVA CONSULTA: {user_query}")
+        logger.info(f"👤 Roles usuario: {sorted(normalize_roles(user_roles or []))}")
         logger.info(f"{'='*60}")
 
         try:
@@ -320,6 +346,9 @@ class LlamaRouter:
                 logger.info(f"🎯 ENRUTAMIENTO DIRECTO: Property ID #{property_id}")
                 from llama_index.core.schema import QueryBundle
                 query_bundle = QueryBundle(query_str=user_query)
+                # Pasar session_id al engine si está disponible
+                if session_id:
+                    self.property_question_engine.session_id = session_id
                 response = self.property_question_engine._query(query_bundle)
                 logger.info(f"🔧 Tool seleccionado: property_info (directo por ID)")
                 logger.info(f"📤 Respuesta generada (primeros 200 chars): {str(response)[:200]}...")
@@ -327,7 +356,14 @@ class LlamaRouter:
 
             # 3️⃣ Si NO detectó patrón, usa ROUTER NORMAL (LLaMA selector)
             logger.info(f"🚀 ENRUTAMIENTO NORMAL: Pasando al router LLaMA...")
-            response = self.router.query(user_query)
+            # Asignar session_id al engine para contexto
+            if session_id:
+                self.property_question_engine.session_id = session_id
+            role_router = RouterQueryEngine(
+                selector=PydanticSingleSelector.from_defaults(),
+                query_engine_tools=self._tools_for_roles(user_roles),
+            )
+            response = role_router.query(user_query)
 
             selected_tool = "desconocido"
             if hasattr(response, 'metadata') and response.metadata:
@@ -343,9 +379,16 @@ class LlamaRouter:
 
     def is_tool_response(self, response_text: str) -> bool:
         """Detecta si la respuesta proviene de una tool de datos. Recibe el string ya convertido."""
-        response_lower = response_text.lower()
-        return any(
-            tool.metadata.name in response_lower for tool in self.tools
-            if tool.metadata.name != "general"
-        )
+        try:
+            response_lower = response_text.lower()
+            if not hasattr(self, 'default_tools'):
+                logger.error("❌ ERROR: self.default_tools no existe. Atributos del router: %s", dir(self))
+                return False
+            return any(
+                tool.metadata.name in response_lower for tool in self.default_tools
+                if tool.metadata.name != "general"
+            )
+        except Exception as e:
+            logger.error(f"❌ ERROR en is_tool_response: {e}", exc_info=True)
+            return False
     

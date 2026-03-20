@@ -82,7 +82,16 @@ class ChatService {
             headers['Authorization'] = `Bearer ${token}`;
         }
 
-        const bienvenida = await fetch(`${BASE_URL}/saludo`, {
+        // Agrega nombre si está disponible
+        let url = `${BASE_URL}/saludo`;
+        if (this.nombre) {
+            const params = new URLSearchParams({
+                nombre: this.nombre
+            });
+            url = `${BASE_URL}/saludo?${params}`;
+        }
+
+        const bienvenida = await fetch(url, {
             method: 'GET',
             headers: headers,
         });

@@ -3,8 +3,13 @@ IAServicio - Superclase base para endpoints de IA
 Contiene lógica común de validación y utilidades
 """
 
+import logging
 from fastapi import HTTPException, Header, Depends, Request
 from app.services.easycore_auth import EasycoreAuth
+from app.services.easycore_user_roles import EasycoreUserRolesService
+
+
+logger = logging.getLogger(__name__)
 
 
 
@@ -14,14 +19,21 @@ async def get_user_info_dependency(authorization: str = Header(None)) -> dict:
     Decodifica el JWT y retorna info de usuario y autenticación.
     """
     if not authorization:
+        logger.warning("Solicitud sin header Authorization")
         return {"authenticated": False}
     result = EasycoreAuth.decode_token(authorization)
     if result["ok"]:
+        token_roles = result["value"].get("roles", [])
+        db_roles = EasycoreUserRolesService.get_roles_for_user(result["value"]["id"])
+        merged_roles = sorted({str(r).strip() for r in [*token_roles, *db_roles] if str(r).strip()})
+
         return {
             "id": result["value"]["id"],
             "nombre": result["value"]["nombre"],
+            "roles": merged_roles,
             "authenticated": True
         }
+    logger.warning("No se pudo autenticar usuario desde JWT: %s", result.get("error", "error desconocido"))
     return {"authenticated": False}
 
 # Dependencia para requerir autenticación

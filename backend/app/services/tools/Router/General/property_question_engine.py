@@ -38,6 +38,7 @@ class PropertyQuestionEngine(BaseQueryEngine):
         super().__init__(callback_manager=CallbackManager([]))
         self.context_manager = context_manager
         self.property_db_service = property_db_service
+        self.session_id = None  # Se asigna dinámicamente desde el router
         logger.info("✓ PropertyQuestionEngine inicializado")
     
     def _query(self, query_bundle: QueryBundle) -> Response:
@@ -52,6 +53,8 @@ class PropertyQuestionEngine(BaseQueryEngine):
 
         # 1️⃣ Intentar extraer ID (primero, más específico)
         property_id = self._extract_property_id(query)
+        logger.info(f"[DEBUG] property_id extraído: {property_id}")
+
         if property_id is not None:
             logger.info(f"  🆔 ID extraído: {property_id}")
             property_data = self.property_db_service.get_property_by_id(property_id)
@@ -72,9 +75,9 @@ class PropertyQuestionEngine(BaseQueryEngine):
                 property_data = self.property_db_service.get_property_by_name(property_name)
 
         # 4️⃣ Si no encontró, intentar usar contexto (última propiedad de la conversación)
-        if not property_data and self.context_manager:
+        if not property_data and self.context_manager and self.session_id:
             logger.info(f"  📚 Intentando obtener propiedad del contexto...")
-            property_data = self.context_manager.get_last_property()
+            property_data = self.context_manager.get_last_property(self.session_id)
             if property_data:
                 logger.info(f"  ✓ Propiedad obtenida del contexto: {property_data.get('nombre', 'N/A')}")
 
@@ -86,14 +89,31 @@ class PropertyQuestionEngine(BaseQueryEngine):
                 )
             )
 
+        # 💾 GUARDAR en contexto para preguntas posteriores
+        if self.session_id and self.context_manager:
+            self.context_manager.update_last_property(self.session_id, property_data)
+            logger.info(f"💾 Propiedad guardada en contexto: {property_data.get('nombre', 'N/A')}")
+
+        # 🎯 Si se encontró por ID EXPLÍCITO, SIEMPRE mostrar TODO (información completa)
+        logger.info(f"[DEBUG] Verificando si hay ID explícito: property_id={property_id}, is_not_none={property_id is not None}")
+
+        if property_id is not None:
+            logger.info(f"  📋 ID explícito detectado ({property_id}) → Mostrando información COMPLETA")
+            summary_response = self._generate_property_summary(property_data)
+            logger.info(f"[DEBUG] Retornando summary: {summary_response}")
+            return summary_response
+
         # Detectar tipo de pregunta específica
         question_type = self._detect_question_type(query)
+        logger.info(f"[DEBUG] Tipo de pregunta detectado: {question_type}")
 
         # Si no hay tipo específico, mostrar resumen general
         if not question_type:
+            logger.info(f"[DEBUG] Sin tipo específico, mostrando resumen general")
             return self._generate_property_summary(property_data)
 
         # Generar respuesta según el tipo de pregunta
+        logger.info(f"[DEBUG] Generando respuesta específica para tipo: {question_type}")
         response_text = self._generate_answer(question_type, property_data)
 
         return Response(response=response_text)
@@ -103,9 +123,16 @@ class PropertyQuestionEngine(BaseQueryEngine):
         Detecta qué tipo de pregunta es.
 
         Returns:
-            str: Tipo de pregunta o None
+            str: Tipo de pregunta o None (None = mostrar información completa)
         """
         query_lower = query.lower()
+
+        # 🔍 PRIMERO detectar si es "información completa/general" → None (mostrar TODO)
+        if re.search(r'\b(informacion|información|completa|complete|total|toda\s+la|general|dime\s+sobre|cuéntame\s+sobre|todo\s+sobre)\b', query_lower):
+            # Pero excluir si está preguntando algo específico después
+            if not re.search(r'\b(banco|agente|precio|habitantes|cuartos|baños|banos|ubicacion|area|tamano|tipo)\b', query_lower):
+                logger.info(f"  ℹ️ Pregunta general detectada: información completa")
+                return None
 
         # Banco/Entidad
         if re.search(r'\b(banco|entidad|institution|financiera|que banco)\b', query_lower):
@@ -128,7 +155,7 @@ class PropertyQuestionEngine(BaseQueryEngine):
             return 'banos'
 
         # Ubicación
-        if re.search(r'\b(ubicacion|ubicada|direccion|donde|queda|esta|donde\s+esta)\b', query_lower):
+        if re.search(r'\b(ubicacion|ubicada|direccion|donde|queda|donde\s+esta)\b', query_lower):
             return 'ubicacion'
 
         # Área/Tamaño

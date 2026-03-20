@@ -103,7 +103,7 @@ class LlamaOrchestor:
 
         # Routing (selector decide tool)
         query_text = mensaje if not usar_historial else "\n".join([f"{h.role}: {h.content}" for h in last]) + "\nUsuario: " + mensaje
-        raw = self.router.query(query_text, user_roles=user_roles or [])
+        raw = self.router.query(query_text, session_id=session_id, user_roles=user_roles or [])
 
         resp = raw.response if hasattr(raw, "response") else raw
         
@@ -113,8 +113,7 @@ class LlamaOrchestor:
 
         resp = str(resp)
 
-  # Guardar en memoria (si no es tool)
-       # Guardar en memoria (si no es tool)
+        # Guardar en memoria (si no es tool)
         if not self.router.is_tool_response(resp):
             mem.put_messages([
                 ChatMessage(role="user", content=f"{nombreUsuario}: {mensaje}"),

@@ -21,17 +21,7 @@ async def root() -> dict:
 @router.post("/saludo")
 async def saludo(request: ChatRequest) -> dict:
     """Simple greeting endpoint."""
-    body = {
-        "id": request.id,
-        "nombre": request.nombre,
-        "mensaje": request.mensaje,
-    }
-    
-    validation = EasycoreAuth.from_chat_body(body)
-    
-    if not validation["ok"]:
-        raise HTTPException(status_code=400, detail=validation["error"])
-    
-    validated_data = validation["value"]
-    
-    return {"message": f"Hola {validated_data['nombre']}! Soy EVA, tu asistente de IA. En qué puedo ayudarte hoy?"}
+    nombre = request.nombre if hasattr(request, 'nombre') and request.nombre else ""
+    if nombre:
+        return {"message": f"Hola {nombre}! Soy EVA, tu asistente de IA. ¿En qué puedo ayudarte hoy?"}
+    return {"message": "Hola! Soy EVA, tu asistente de IA. ¿En qué puedo ayudarte hoy?"}
