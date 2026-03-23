@@ -74,6 +74,7 @@ class ChatService {
     }
 
     async getPrimerMensaje() {
+        await this.ready; // Esperar a que initializeUser termine
         const token = localStorage.getItem('chat_token');
         const headers = {
             'Content-Type': 'application/json',
