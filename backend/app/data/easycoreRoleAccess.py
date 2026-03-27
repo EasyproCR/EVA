@@ -15,20 +15,23 @@ COMMON_TABLES: set[str] = {
 
 # Mapa canonical role -> tablas permitidas.
 ROLE_TABLE_ACCESS: dict[str, set[str]] = {
-    "administrator": {"*"},
-    "human_resources": {
+    "super_admin": {"*"},
+    "rrhh": {
         "users",
         "employees",
         "departaments",
         "employee_checklists",
         "leave_requests",
+        "loan_requests",
+        "policy_guidelines",
+        "administrative_reminders",
         "documents",
         "acces_requests",
         "countries",
         "states",
         "cities",
     },
-    "support": {
+    "soporte": {
         "offers",
         "acces_requests",
         "leave_requests",
@@ -45,7 +48,7 @@ ROLE_TABLE_ACCESS: dict[str, set[str]] = {
         "states",
         "cities",
     },
-    "finance": {
+    "ventas": {
         "financial_controls",
         "financial_movements",
         "expense_controls",
@@ -57,7 +60,7 @@ ROLE_TABLE_ACCESS: dict[str, set[str]] = {
         "organizations",
         "personal_customers",
     },
-    "marketing": {
+    "servicio_al_cliente": {
         "campaigns",
         "campaign_socials",
         "ad_requests",
@@ -66,7 +69,7 @@ ROLE_TABLE_ACCESS: dict[str, set[str]] = {
         "personal_customers",
         "organizations",
     },
-    "operations": {
+    "gerente": {
         "operations",
         "projects",
         "property_assignments",
@@ -82,25 +85,12 @@ ROLE_TABLE_ACCESS: dict[str, set[str]] = {
 
 # Alias comunes de nombres de rol en EasyCore.
 ROLE_ALIASES: dict[str, str] = {
-    "admin": "administrator",
-    "administrador": "administrator",
-    "administrator": "administrator",
-    "superadmin": "administrator",
-    "super_admin": "administrator",
-    "rrhh": "human_resources",
-    "rh": "human_resources",
-    "recursos_humanos": "human_resources",
-    "recursos humanos": "human_resources",
-    "human_resources": "human_resources",
-    "human resources": "human_resources",
-    "soporte": "support",
-    "support": "support",
-    "finance": "finance",
-    "finanzas": "finance",
-    "marketing": "marketing",
-    "mercadeo": "marketing",
-    "operations": "operations",
-    "operaciones": "operations",
+    "super_admin": "super_admin",
+    "rrhh": "rrhh",
+    "soporte": "soporte",
+    "ventas": "ventas",
+    "servicio_al_cliente": "servicio_al_cliente",
+    "gerente": "gerente",
 }
 
 
@@ -121,18 +111,18 @@ def normalize_roles(raw_roles: Iterable[str] | None) -> set[str]:
             continue
 
         # Match por contenido para nombres de rol compuestos.
-        if "admin" in role:
-            normalized.add("administrator")
+        if "super_admin" in role:
+            normalized.add("super_admin")
         elif "rrhh" in role or "recursos" in role or "human" in role:
-            normalized.add("human_resources")
+            normalized.add("rrhh")
         elif "soporte" in role or "support" in role:
-            normalized.add("support")
+            normalized.add("soporte")
         elif "finan" in role:
-            normalized.add("finance")
+            normalized.add("ventas")
         elif "market" in role or "mercadeo" in role:
-            normalized.add("marketing")
+            normalized.add("servicio_al_cliente")
         elif "oper" in role:
-            normalized.add("operations")
+            normalized.add("gerente")
 
     return normalized
 

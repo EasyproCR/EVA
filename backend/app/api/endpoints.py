@@ -44,11 +44,12 @@ async def chat(
 
 @router.get("/saludo")
 async def saludo(
+    http_req: Request,
     user_info: dict = Depends(get_user_info_dependency),
     nombre: str = None
 ) -> dict:
     """
-    Endpoint de saludo inicial.
+    Endpoint de saludo inicial con recordatorios automáticos para RRHH.
     GET /api/saludo?nombre=Juan
     """
     # Intenta obtener nombre del query param, si no está, del token
@@ -56,13 +57,60 @@ async def saludo(
     if not nombre_final:
         nombre_final = (user_info.get('nombre', '') or "").strip()
 
+    # Saludo base
     if nombre_final:
-        return {
-            "saludo": f"Hola {nombre_final}! Soy EVA, tu asistente de IA. ¿En qué puedo ayudarte hoy?"
-        }
-    return {
-        "saludo": "Hola! Soy EVA, tu asistente de IA. ¿En qué puedo ayudarte hoy?"
-    }
+        saludo_texto = f"¡Hola {nombre_final}! Soy EVA, tu asistente de IA."
+    else:
+        saludo_texto = "¡Hola! Soy EVA, tu asistente de IA."
+
+    # Verificar recordatorios para usuarios de RRHH
+    user_roles = user_info.get('roles', [])
+    recordatorios_info = None
+
+    try:
+        orch = http_req.app.state.orch
+        reminders_result = orch.get_rrhh_reminders(user_roles)
+
+        if reminders_result.get("authorized") and reminders_result.get("count", 0) > 0:
+            # Construir mensaje de recordatorios
+            count = reminders_result["count"]
+            reminders = reminders_result["reminders"]
+
+            recordatorios_texto = f"\n\n📋 **Tienes {count} alerta(s) pendiente(s):**\n"
+            for r in reminders:
+                emoji = r.get('emoji', '🔵')
+                titulo = r.get('titulo', 'Sin título')
+                fecha = r.get('fecha_vencimiento', '')
+                accion = r.get('accion', '')
+
+                if fecha and fecha != 'None' and fecha != '':
+                    recordatorios_texto += f"\n{emoji} **{titulo}** - Vence: {fecha}"
+                else:
+                    recordatorios_texto += f"\n{emoji} **{titulo}**"
+
+                # Mostrar sugerencia de acción si existe
+                if accion:
+                    recordatorios_texto += f"\n   _→ {accion}_"
+
+            saludo_texto += recordatorios_texto
+            recordatorios_info = {
+                "count": count,
+                "reminders": reminders
+            }
+        elif reminders_result.get("authorized") and reminders_result.get("count", 0) == 0:
+            saludo_texto += "\n\n✅ ¡Todo en orden! No tienes alertas pendientes."
+            recordatorios_info = {"count": 0, "reminders": []}
+    except Exception as e:
+        # Si falla, solo mostrar saludo básico
+        pass
+
+    saludo_texto += "\n\n¿En qué puedo ayudarte hoy?"
+
+    response = {"saludo": saludo_texto}
+    if recordatorios_info is not None:
+        response["recordatorios"] = recordatorios_info
+
+    return response
 
 @router.delete("/eliminarMemoria")  # ✅ Cambiar a DELETE (o dejar POST)
 async def eliminar_memoria(

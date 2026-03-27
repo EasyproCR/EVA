@@ -22,6 +22,7 @@ class LlamaOrchestor:
             model=self.settings.openai_model,
             max_tokens=self.settings.openai_max_tokens,
             temperature=0.1,
+            timeout=120.0,
             system_prompt=(
                 "Responde en español. Tienes acceso a bases de datos como Easycore y Bienes Adjudicados y a un servicio externo de internet. "
                 "Elige la herramienta adecuada según la consulta del usuario. "
@@ -36,7 +37,8 @@ class LlamaOrchestor:
 
 
         Settings.embed_model = OpenAIEmbedding(
-            api_key=self.settings.openai_api_key
+            api_key=self.settings.openai_api_key,
+            timeout=120.0
         )
         self.router = llamaRouter.LlamaRouter(settings)
 
@@ -77,6 +79,7 @@ class LlamaOrchestor:
             model=self.settings.openai_model,
             max_tokens=self.settings.openai_max_tokens,
             temperature=0.1,
+            timeout=120.0,
             system_prompt=dynamic_system_prompt
         )
 
@@ -123,3 +126,32 @@ class LlamaOrchestor:
     
     def obtenerIDUsuario(self):
         return self.idUsuario
+
+    def get_rrhh_reminders(self, user_roles: list[str]) -> dict:
+        """
+        Obtiene recordatorios pendientes de RRHH si el usuario tiene permiso.
+
+        Args:
+            user_roles: Lista de roles del usuario
+
+        Returns:
+            dict con recordatorios o mensaje de no autorizado
+        """
+        # Verificar si tiene rol de RRHH
+        allowed_roles = {'super_admin', 'rrhh'}
+        roles_lower = [str(r).lower().strip() for r in user_roles]
+
+        if not any(role in allowed_roles for role in roles_lower):
+            return {"authorized": False, "count": 0, "reminders": []}
+
+        # Obtener recordatorios desde el rrhh_engine.data_service
+        try:
+            if hasattr(self.router, 'rrhh_engine') and self.router.rrhh_engine:
+                data_service = self.router.rrhh_engine.data_service
+                if data_service:
+                    result = data_service.get_pending_reminders_for_greeting()
+                    result["authorized"] = True
+                    return result
+            return {"authorized": True, "count": 0, "reminders": [], "error": "Servicio no disponible"}
+        except Exception as e:
+            return {"authorized": True, "count": 0, "reminders": [], "error": str(e)}

@@ -12,11 +12,11 @@ class LlamaSQLQuery:
         self.sqlalchemy_engine = create_engine( self.connection_uri,
         pool_pre_ping=True,          # evita conexiones muertas
         pool_recycle=1800,           # recicla cada 30 min
-        pool_timeout=30,
+        pool_timeout=120,            # timeout de conexión 120s
         connect_args={
-        "connect_timeout": 30,
-        "read_timeout": 30,
-        "write_timeout": 30,
+        "connect_timeout": 120,
+        "read_timeout": 120,
+        "write_timeout": 120,
     },)
         self.sql_database = SQLDatabase(self.sqlalchemy_engine)
 

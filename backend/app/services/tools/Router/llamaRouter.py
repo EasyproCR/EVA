@@ -13,6 +13,9 @@ from app.services.tools.Router.SQLQuery.bienesadjudicados.propertydbservice impo
 from app.services.tools.Router.General.general_query_engine import GeneralQueryEngine
 from app.services.tools.Router.General.tavilyService import TavilyBienesQueryEngine
 from app.services.tools.Router.General.property_question_engine import PropertyQuestionEngine
+from app.services.tools.Router.General.rrhh_question_engine import RrhhQuestionEngine
+from app.services.tools.Router.General.posts_question_engine import PostsQuestionEngine
+from app.services.tools.Router.General.posts_generation_engine import PostsGenerationEngine
 from app.services.tools.Router.General.query_preprocessor import QueryPreprocessor, QueryType
 from app.services.conversation_context import ConversationContext
 from app.data import easycoreContext
@@ -216,7 +219,104 @@ class LlamaRouter:
             logger.error(f"✗ Error configurando property_info: {e}")
             raise
 
-        # -------- Tavily (Internet - solo bienesadjudicadoscr.com) --------
+        # -------- RRHH Question Engine (Control de acceso para recursos humanos) --------
+        try:
+            rrhh_engine = RrhhQuestionEngine(sql_database=self.db2_sql_db)
+            rrhh_tool = QueryEngineTool(
+                query_engine=rrhh_engine,
+                metadata=ToolMetadata(
+                    name="rrhh_info",
+                    description=(
+                        "👥 INFORMACIÓN DE RECURSOS HUMANOS (CONTROL DE ACCESO)\n\n"
+                        "USAR CUANDO el usuario pregunta sobre:\n"
+                        "- Expedientes de empleados\n"
+                        "- Vacaciones, permisos y licencias\n"
+                        "- Solicitudes de crédito/préstamo\n"
+                        "- Pautas y políticas internas\n"
+                        "- Recordatorios administrativos\n\n"
+                        "EJEMPLOS:\n"
+                        "✅ '¿Cuál es el expediente de Juan?'\n"
+                        "✅ '¿Cuántos días de vacaciones tiene María?'\n"
+                        "✅ '¿Estado de solicitud de crédito de Carlos?'\n"
+                        "✅ '¿Cuál es la política de...?'\n\n"
+                        "NOTA: Solo usuarios con rol 'rrhh' o 'super_admin' pueden acceder.\n"
+                        "Otros usuarios recibirán mensaje indicando que contacten al área de RRHH."
+                    ),
+                ),
+            )
+            self.rrhh_engine = rrhh_engine
+            self.rrhh_tool = rrhh_tool
+            logger.info("✓ Tool 'rrhh_info' configurado correctamente")
+        except Exception as e:
+            logger.error(f"✗ Error configurando rrhh_info: {e}")
+            raise
+
+        # -------- Posts Question Engine (Control de acceso para publicaciones en redes sociales) --------
+        try:
+            posts_engine = PostsQuestionEngine(sql_database=self.db2_sql_db)
+            posts_tool = QueryEngineTool(
+                query_engine=posts_engine,
+                metadata=ToolMetadata(
+                    name="posts_info",
+                    description=(
+                        "📱 INFORMACIÓN DE POSTS/PUBLICACIONES EN REDES SOCIALES\n\n"
+                        "USAR CUANDO el usuario pregunta sobre:\n"
+                        "- Posts en Instagram, Facebook, Twitter, TikTok, LinkedIn, YouTube\n"
+                        "- Estadísticas de engagement (reacciones, comentarios, shares, vistas)\n"
+                        "- Publicaciones por plataforma\n"
+                        "- Top posts con mejor rendimiento\n"
+                        "- Campañas sociales y contenido publicado\n\n"
+                        "EJEMPLOS:\n"
+                        "✅ '¿Cuáles son los posts en Instagram?'\n"
+                        "✅ '¿Cuál es el post con más reacciones?'\n"
+                        "✅ '¿Estadísticas de los posts de Facebook?'\n"
+                        "✅ '¿Posts con mejor engagement?'\n"
+                        "✅ 'Muestra los posts más compartidos'\n\n"
+                        "ACCESO: Abierto para TODOS los usuarios.\n"
+                        "Los datos vienen de la base de datos de campañas sociales, NO de internet."
+                    ),
+                ),
+            )
+            self.posts_engine = posts_engine
+            self.posts_tool = posts_tool
+            logger.info("✓ Tool 'posts_info' configurado correctamente")
+        except Exception as e:
+            logger.error(f"✗ Error configurando posts_info: {e}")
+            raise
+
+        # -------- Posts Generation Engine (Generar contenido de posts para todos) --------
+        try:
+            posts_gen_engine = PostsGenerationEngine(sql_database=self.db2_sql_db)
+            posts_gen_tool = QueryEngineTool(
+                query_engine=posts_gen_engine,
+                metadata=ToolMetadata(
+                    name="posts_generation",
+                    description=(
+                        "✍️ GENERACIÓN DE POSTS/CONTENIDO PARA REDES SOCIALES\n\n"
+                        "USAR CUANDO el usuario pide:\n"
+                        "- Elaborar/generar/crear un post\n"
+                        "- Escribir contenido para Instagram, Facebook, Twitter, TikTok, LinkedIn, YouTube\n"
+                        "- Ideas de posts para una propiedad/producto/noticia\n"
+                        "- Captions o textos para publicaciones\n"
+                        "- Contenido optimizado para redes sociales\n\n"
+                        "EJEMPLOS:\n"
+                        "✅ 'Elabora un post de esta propiedad'\n"
+                        "✅ 'Genera un tweet sobre nuestro producto'\n"
+                        "✅ 'Crea un caption para Instagram'\n"
+                        "✅ 'Escribe un post informativo para LinkedIn'\n"
+                        "✅ 'Haz un video script para TikTok'\n\n"
+                        "ACCESO: Abierto para TODOS los usuarios sin restricciones de rol.\n"
+                        "NOTA: Utiliza IA para crear contenido optimizado por plataforma."
+                    ),
+                ),
+            )
+            self.posts_gen_engine = posts_gen_engine
+            self.posts_gen_tool = posts_gen_tool
+            logger.info("✓ Tool 'posts_generation' configurado correctamente")
+        except Exception as e:
+            logger.error(f"✗ Error configurando posts_generation: {e}")
+            raise
+
         try:
             tavily = TavilyBienesQueryEngine(
                 api_key=settings.tavily_api_key,
@@ -267,7 +367,7 @@ class LlamaRouter:
             raise
 
         # -------- Router --------
-        self.base_tools = [sql_db1_tool, banks_tool, general_tool, property_info_tool, internet_tool, internet_search_tool]
+        self.base_tools = [sql_db1_tool, banks_tool, rrhh_tool, posts_tool, posts_gen_tool, general_tool, property_info_tool, internet_tool, internet_search_tool]
         self.default_tools = [*self.base_tools, sql_db2_tool]
         self.router = RouterQueryEngine(
             selector=PydanticSingleSelector.from_defaults(),
@@ -340,6 +440,10 @@ class LlamaRouter:
         try:
             # 1️⃣ PRE-PROCESAMIENTO: Detectar patrones específicos
             query_type, property_id = self.query_preprocessor.analyze(user_query)
+
+            # Establecer user_roles en engines especializados
+            self.rrhh_engine.set_user_roles(user_roles)
+            self.posts_engine.set_user_roles(user_roles)
 
             # 2️⃣ Si detectó ID de propiedad, ENRUTA DIRECTO a property_info
             if query_type == QueryType.PROPERTY_ID:

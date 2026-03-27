@@ -12,4 +12,5 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=3000,
         reload=settings.debug,
+        timeout_keep_alive=120,
     )
