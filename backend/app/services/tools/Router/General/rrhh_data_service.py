@@ -265,7 +265,7 @@ class RrhhDataService:
 
     def _process_loans_query(self, query: str, user_roles: List[str]) -> str:
         """
-        Procesa consulta sobre créditos y préstamos
+        Procesa consulta sobre créditos y estudios de crédito
         """
         logger.info(f"  💰 Procesando query de CRÉDITOS: {query}")
 
@@ -273,13 +273,14 @@ class RrhhDataService:
             state_filter = self._detect_state_filter(query)
 
             sql = f"""
-            SELECT lr.id, u.name as empleado, lr.amount as monto,
-                   lr.status as estado, lr.reason as razon, lr.created_at as fecha
-            FROM loan_requests lr
-            LEFT JOIN users u ON lr.user_id = u.id
+            SELECT csr.id, u.name as empleado, csr.property as propiedad,
+                   csr.request_status as estado, csr.request_reason as razon,
+                   csr.sales_comments as comentarios, csr.created_at as fecha
+            FROM credit_study_requests csr
+            LEFT JOIN users u ON csr.user_id = u.id
             WHERE 1=1
-            {f"AND lr.status = '{state_filter}'" if state_filter else ""}
-            ORDER BY lr.created_at DESC
+            {f"AND csr.request_status = '{state_filter}'" if state_filter else ""}
+            ORDER BY csr.created_at DESC
             LIMIT 20
             """
 
@@ -289,15 +290,33 @@ class RrhhDataService:
                 estado = f" ({state_filter})" if state_filter else ""
                 return f"ℹ️ No hay solicitudes de crédito{estado}."
 
-            response = f"💰 **Solicitudes de Crédito/Adelanto** ({len(results)})\n\n"
+            response = f"💰 **Solicitudes de Estudio de Crédito** ({len(results)})\n\n"
             if state_filter:
                 response += f"_Filtro: {state_filter}_\n\n"
 
             for loan in results:
                 estado = loan.get('estado', '?')
-                icon = "✅" if estado == 'approved' else "⏳" if estado == 'pending' else "❌"
-                response += f"{icon} **{loan.get('empleado', 'N/A')}** - ${loan.get('monto', 0)}\n"
-                response += f"   {loan.get('razon', 'Sin motivo')} ({loan.get('fecha')})\n"
+
+                # Mapear estado a símbolos y texto en español
+                if estado == 'approved':
+                    icon = "✅"
+                    estado_text = "Aprobado"
+                elif estado == 'pending':
+                    icon = "⏳"
+                    estado_text = "Pendiente"
+                elif estado == 'rejected':
+                    icon = "❌"
+                    estado_text = "Rechazado"
+                else:
+                    icon = "❓"
+                    estado_text = estado
+
+                response += f"{icon} **{loan.get('empleado', 'N/A')}** - Estado: **{estado_text}**\n"
+                response += f"   Propiedad: {loan.get('propiedad', 'N/A')}\n"
+                response += f"   Motivo: {loan.get('razon', 'Sin especificar')}\n"
+                if loan.get('comentarios'):
+                    response += f"   Comentarios: {loan.get('comentarios')}\n"
+                response += f"   Fecha: {loan.get('fecha')}\n\n"
 
             return response
 
@@ -461,11 +480,11 @@ class RrhhDataService:
 
             # Créditos pendientes (tabla opcional)
             try:
-                result = self._execute_query("SELECT COUNT(*) as total FROM loan_requests WHERE status = 'pending'")
+                result = self._execute_query("SELECT COUNT(*) as total FROM credit_study_requests WHERE request_status = 'pending'")
                 if result and result[0].get('total', 0) > 0:
                     reminders.append({"emoji": "💰", "titulo": f"{result[0]['total']} créditos pendientes", "tipo": "creditos"})
             except Exception as e:
-                logger.warning(f"⚠️ Tabla loan_requests no disponible: {str(e)[:100]}")
+                logger.warning(f"⚠️ Tabla credit_study_requests no disponible: {str(e)[:100]}")
 
             # Recordatorios manuales
             try:
