@@ -6,6 +6,7 @@ Accesible para todos los usuarios sin restricción de roles
 import logging
 import re
 from typing import Optional, Dict
+from difflib import SequenceMatcher
 from llama_index.core.base.base_query_engine import BaseQueryEngine
 from llama_index.core.schema import QueryBundle
 from llama_index.core.base.response.schema import Response
@@ -64,9 +65,28 @@ class PostsGenerationEngine(BaseQueryEngine):
         logger.info("✓ PostsGenerationEngine inicializado")
 
     def _is_generation_request(self, query: str) -> bool:
-        """Detecta si la pregunta pide generar/elaborar un post"""
+        """
+        Detecta si la pregunta pide generar/elaborar un post
+        ULTRA FLEXIBLE: tolera faltas ortográficas desde 50%
+        """
         query_lower = query.lower()
-        return any(keyword in query_lower for keyword in self.GENERATION_KEYWORDS)
+        words = query_lower.split()
+
+        best_score = 0.0
+        for word in words:
+            for keyword in self.GENERATION_KEYWORDS:
+                # Similitud exacta (rápido)
+                if keyword in word or word in keyword:
+                    return True
+
+                # Similitud difusa desde 50%
+                similarity = SequenceMatcher(None, word, keyword).ratio()
+                if similarity >= 0.50:
+                    best_score = similarity
+                    logger.info(f"  ◇ Fuzzy generation keyword ({best_score*100:.0f}%): '{word}' ≈ '{keyword}'")
+                    return True
+
+        return False
 
     def _extract_property_id(self, query: str) -> Optional[int]:
         """Extrae ID de propiedad de la query (ej: 'id 150' o '#150')"""
@@ -125,29 +145,66 @@ class PostsGenerationEngine(BaseQueryEngine):
             return None
 
     def _detect_platform(self, query: str) -> str:
-        """Detecta la plataforma objetivo del post"""
+        """
+        Detecta la plataforma objetivo del post
+        ULTRA FLEXIBLE: tolera faltas ortográficas desde 50%
+        """
         query_lower = query.lower()
+        words = query_lower.split()
+
+        best_platform = "instagram"  # Default
+        best_score = 0.0
 
         for platform, keywords in self.PLATFORM_KEYWORDS.items():
-            if any(kw in query_lower for kw in keywords):
-                return platform
+            for word in words:
+                for keyword in keywords:
+                    # Similitud exacta (rápido)
+                    if keyword in word or word in keyword:
+                        logger.info(f"  ✓ Plataforma detectada: {platform}")
+                        return platform
 
-        return "instagram"  # Default a Instagram para propiedades
+                    # Similitud difusa desde 50%
+                    similarity = SequenceMatcher(None, word, keyword).ratio()
+                    if similarity >= 0.50 and similarity > best_score:
+                        best_score = similarity
+                        best_platform = platform
+                        logger.info(f"  ◇ Fuzzy platform ({best_score*100:.0f}%): '{word}' ≈ '{keyword}' → {platform}")
+
+        return best_platform
 
     def _detect_content_type(self, query: str) -> str:
-        """Detecta el tipo de contenido que se solicita"""
+        """
+        Detecta el tipo de contenido que se solicita
+        ULTRA FLEXIBLE: tolera faltas ortográficas desde 50%
+        """
         query_lower = query.lower()
+        words = query_lower.split()
+
+        best_content_type = "promocional"  # Default
+        best_score = 0.0
 
         for content_type, keywords in self.CONTENT_TYPES.items():
-            if any(kw in query_lower for kw in keywords):
-                return content_type
+            for word in words:
+                for keyword in keywords:
+                    # Similitud exacta (rápido)
+                    if keyword in word or word in keyword:
+                        logger.info(f"  ✓ Tipo contenido detectado: {content_type}")
+                        return content_type
 
-        return "promocional"  # Default a promocional para propiedades
+                    # Similitud difusa desde 50%
+                    similarity = SequenceMatcher(None, word, keyword).ratio()
+                    if similarity >= 0.50 and similarity > best_score:
+                        best_score = similarity
+                        best_content_type = content_type
+                        logger.info(f"  ◇ Fuzzy content ({best_score*100:.0f}%): '{word}' ≈ '{keyword}' → {content_type}")
+
+        return best_content_type
 
     def _query(self, query_bundle: QueryBundle) -> Response:
         """
         Procesa solicitudes de generación de posts.
         Si hay ID/URL de propiedad, obtiene datos y genera post específico.
+        Si la solicitud es vaga, hace preguntas aclaratorias.
         """
         query = query_bundle.query_str
         logger.info(f"📝 Posts Generation Request: {query}")
@@ -160,6 +217,28 @@ class PostsGenerationEngine(BaseQueryEngine):
         logger.info(f"  🎨 Detectada solicitud de generación de posts")
 
         try:
+            # Detectar plataforma y tipo de contenido
+            platform = self._detect_platform(query)
+            content_type = self._detect_content_type(query)
+
+            # Verificar si la solicitud es muy vaga
+            query_lower = query.lower()
+            is_vague = len(query) < 20  # Muy corta
+            has_no_specifics = not any(word in query_lower for word in ['propiedad', 'id', 'http', 'precio', 'ubicación', 'para'])
+
+            if is_vague and has_no_specifics:
+                # Hacer preguntas aclaratorias
+                clarification = (
+                    "🤔 **Necesito más información para generar un post mejor:**\n\n"
+                    "1️⃣ **¿De qué es el post?** (ej: una propiedad específica, promoción general, etc)\n"
+                    "2️⃣ **¿Para cuál plataforma?** (Instagram, Facebook, TikTok, LinkedIn, Twitter, etc)\n"
+                    "3️⃣ **¿Qué tipo de contenido?** (promocional, informativo, educativo, inspirador)\n"
+                    "4️⃣ **¿Algún detalle importante?** (precio, ubicación, características especiales)\n\n"
+                    "💡 **Ejemplo:** 'Genera un post para Instagram de una propiedad de 3 habitaciones en San José, precio $150,000'\n\n"
+                    "¿En qué más te puedo ayudar con tus publicaciones? 😊"
+                )
+                return Response(response=clarification)
+
             # Detectar si hay ID o URL de propiedad
             property_id = self._extract_property_id(query)
             property_url = self._extract_property_url(query)
@@ -175,14 +254,19 @@ class PostsGenerationEngine(BaseQueryEngine):
             elif property_url:
                 logger.info(f"  🔗 URL detectada: {property_url}")
 
-            platform = self._detect_platform(query)
-            content_type = self._detect_content_type(query)
-
             logger.info(f"  📱 Plataforma: {platform} | 📊 Tipo: {content_type}")
 
             response_text = self._generate_post(query, platform, content_type, property_data, property_url)
             logger.info(f"  ✅ Post generado exitosamente")
-            return Response(response=response_text)
+
+            # Agregar pregunta de ayuda adicional al final
+            response_with_help = (
+                f"{response_text}\n\n"
+                f"---\n"
+                f"¿Te puedo ayudar con algo más? (editar, cambiar tono, otra plataforma, etc) 💬"
+            )
+
+            return Response(response=response_with_help)
 
         except Exception as e:
             logger.error(f"  ❌ Error generando post: {str(e)}", exc_info=True)
@@ -218,17 +302,16 @@ class PostsGenerationEngine(BaseQueryEngine):
                 prompt += f"URL de la propiedad: {property_url}\n\n"
 
             prompt += (
-                f"Por favor genera un post PARA VENTA/PROMOCIÓN con estas características:\n\n"
+                f"Por favor genera un post con estas características:\n\n"
                 f"{platform_guidelines}\n\n"
                 f"{content_type_guidance}\n\n"
-                f"IMPORTANTE:\n"
-                f"- Usa emojis relevantes y atractivos\n"
-                f"- Mantén el tono profesional pero atrayente\n"
-                f"- Incluye un CTA (Call to Action) fuerte\n"
+                f"PAUTAS:\n"
+                f"- Usa emojis relevantes cuando sea apropiado\n"
+                f"- Mantén un tono natural y atrayente\n"
+                f"- Incluye un CTA (llamado a la acción) si es necesario\n"
                 f"- Sé conciso pero impactante\n"
-                f"- Si hay datos de propiedad, destaca características principales\n"
-                f"- Optimiza para maximizar clicks y compartidos\n"
-                f"- Precio si es apropiado\n\n"
+                f"- Optimiza para el objetivo del post\n"
+                f"- Flexible en la interpretación - crea contenido que tenga sentido\n\n"
                 f"Respuesta:"
             )
 
@@ -238,9 +321,7 @@ class PostsGenerationEngine(BaseQueryEngine):
             platform_emoji = self._get_platform_emoji(platform)
             formatted_response = (
                 f"{platform_emoji} **NUEVO POST GENERADO PARA {platform.upper()}**\n\n"
-                f"{response_text}\n\n"
-                f"---\n"
-                f"✨ *Post generado por EVA - Optimizado para máximo alcance*"
+                f"{response_text}"
             )
 
             return formatted_response

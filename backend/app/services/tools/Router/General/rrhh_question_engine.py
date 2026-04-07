@@ -49,7 +49,10 @@ class RrhhQuestionEngine(BaseQueryEngine):
         # Recordatorios y alertas
         'recordatorio', 'recordatorios', 'tatiana', 'rrhh', 'recursos humanos',
         'alerta', 'alertas', 'pendiente', 'pendientes', 'oendiente', 'oendientes',
-        'tarea', 'tareas', 'administrador'
+        'tarea', 'tareas', 'administrador',
+
+        # Cumpleaños
+        'cumpleaño', 'cumpleaños', 'nacimiento', 'birthday', 'aniversario'
     }
 
     def __init__(self, sql_database=None):

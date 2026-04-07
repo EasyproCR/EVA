@@ -5,8 +5,9 @@ RRHH Data Service - Construye y procesa consultas de RRHH con respuestas formate
 import logging
 import json
 from typing import Optional, Dict, List, Any
-from datetime import datetime
+from datetime import datetime, timedelta
 from sqlalchemy import text
+from difflib import SequenceMatcher
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +35,16 @@ class RrhhDataService:
 
     LOANS_KEYWORDS = {
         'crédito', 'credito', 'préstamo', 'prestamo', 'adelanto', 'loan', 'credit',
-        'solicitud de crédito', 'solicitud de préstamo', 'solicitud de adelanto'
+        'credid', 'credid', 'credids', 'creditt', 'creditoo', 'credito', 'creditos',
+        'solicitud de crédito', 'solicitud de préstamo', 'solicitud de adelanto',
+        'estudio de crédito', 'estudio credito', 'estudio de credid', 'estudio credid',
+        'financiamiento', 'financiamiento', 'financiar', 'financiacion',
+        'solicitud', 'solicitudes', 'request',
+        'aprobación de crédito', 'aprobacion de credito', 'aprobación credid',
+        'revisión de crédito', 'revision de credito', 'revisión credid',
+        'análisis de crédito', 'analisis de credito', 'análisis credid',
+        'cliente', 'clientes', 'propiedad', 'inmueble', 'vivienda', 'casa',
+        'cred', 'cred.', 'créditos', 'creditos', 'credito'
     }
 
     POLICIES_KEYWORDS = {
@@ -46,6 +56,11 @@ class RrhhDataService:
     REMINDERS_KEYWORDS = {
         'recordatorio', 'recordatorios', 'tatiana', 'tarea', 'tareas', 'pendiente',
         'debido', 'vencimiento', 'administrador', 'reminder', 'alerta', 'alertas'
+    }
+
+    BIRTHDAYS_KEYWORDS = {
+        'cumpleaño', 'cumpleaños', 'nacimiento', 'nacimientos', 'aniversario', 'aniversarios',
+        'birthday', 'birthdays', 'fecha nacimiento', 'día nacimiento'
     }
 
     def __init__(self, sql_database=None):
@@ -87,6 +102,8 @@ class RrhhDataService:
                 return self._process_policies_query(query, user_roles)
             elif query_type == "REMINDERS":
                 return self._process_reminders_query(query, user_roles)
+            elif query_type == "BIRTHDAYS":
+                return self._process_birthdays_query(query, user_roles)
             else:
                 return "❓ No pude clasificar tu pregunta de RRHH. ¿Podrías ser más específico?"
 
@@ -97,21 +114,56 @@ class RrhhDataService:
     def _classify_query(self, query: str) -> Optional[str]:
         """
         Clasifica la pregunta en categoría RRHH usando keywords
+        ULTRA FLEXIBLE: Tolera faltas ortográficas desde 40%
         """
         query_lower = query.lower()
 
-        if any(kw in query_lower for kw in self.EMPLOYEES_KEYWORDS):
-            return "EMPLOYEES"
-        elif any(kw in query_lower for kw in self.LEAVES_KEYWORDS):
-            return "LEAVES"
-        elif any(kw in query_lower for kw in self.LOANS_KEYWORDS):
-            return "LOANS"
-        elif any(kw in query_lower for kw in self.POLICIES_KEYWORDS):
-            return "POLICIES"
-        elif any(kw in query_lower for kw in self.REMINDERS_KEYWORDS):
-            return "REMINDERS"
+        # Tokenizar palabras de la query
+        words = query_lower.split()
 
-        return None
+        # Mapeo de categorías con sus keywords
+        categories = {
+            "EMPLOYEES": self.EMPLOYEES_KEYWORDS,
+            "LEAVES": self.LEAVES_KEYWORDS,
+            "LOANS": self.LOANS_KEYWORDS,
+            "POLICIES": self.POLICIES_KEYWORDS,
+            "REMINDERS": self.REMINDERS_KEYWORDS,
+            "BIRTHDAYS": self.BIRTHDAYS_KEYWORDS,
+        }
+
+        best_match = None
+        best_score = 0.0
+        matched_word = None
+        matched_keyword = None
+
+        # Por cada categoría
+        for category, keywords in categories.items():
+            for word in words:
+                for keyword in keywords:
+                    # Similitud exacta (rápido)
+                    if keyword in word or word in keyword:
+                        logger.info(f"  ✓ Coincidencia exacta: '{word}' = '{keyword}' → {category}")
+                        return category
+
+                    # Similitud difusa (tolerancia ortográfica baja desde 40%)
+                    similarity = SequenceMatcher(None, word, keyword).ratio()
+
+                    # Si la similitud es >= 40% y es mejor que lo que tenemos
+                    if similarity >= 0.40 and similarity > best_score:
+                        best_score = similarity
+                        best_match = category
+                        matched_word = word
+                        matched_keyword = keyword
+
+        # Log de resultado fuzzy
+        if best_match:
+            logger.info(f"  ◇ Coincidencia fuzzy ({best_score*100:.0f}%): '{matched_word}' ≈ '{matched_keyword}' → {best_match}")
+
+        # Retornar mejor coincidencia o None
+        return best_match
+
+
+
 
     def _execute_query(self, sql: str) -> List[Dict[str, Any]]:
         """
@@ -177,28 +229,44 @@ class RrhhDataService:
                 results = self._execute_query(sql)
 
                 if not results:
-                    # Si no encuentra activos, busca en TODOS (incluyendo inactivos)
-                    sql_all = f"""
+                    # Intentar búsqueda fuzzy con tolerancia ortográfica
+                    logger.info(f"  ◇ Búsqueda exacta vacía, intentando fuzzy matching...")
+                    sql_all = """
                     SELECT id, name, email, phone_number, job_position, profession,
                            national_id, address, birthday, marital_status, contract
                     FROM employees
-                    WHERE UPPER(name) LIKE UPPER('%{search_name}%')
-                    ORDER BY name
-                    LIMIT 1
+                    WHERE contract_status = 1
+                    LIMIT 100
                     """
-                    results = self._execute_query(sql_all)
+                    all_employees = self._execute_query(sql_all)
 
-                    if not results:
-                        # Como último recurso, listar todos los empleados
-                        logger.warning(f"  ❌ No encontrado: {search_name}")
-                        all_employees_sql = "SELECT id, name FROM employees ORDER BY name LIMIT 30"
-                        all_emps = self._execute_query(all_employees_sql)
-                        emp_list = '\n'.join([f"  • {e.get('name', 'N/A')}" for e in all_emps])
-                        return (
-                            f"❌ No encontré empleado '{search_name}' en el sistema.\n\n"
-                            f"📋 Empleados disponibles:\n{emp_list}\n\n"
-                            f"¿Quizás quisiste decir alguno de estos? Intenta de nuevo con el nombre exacto."
-                        )
+                    if all_employees:
+                        # Comparar por similitud
+                        matches = []
+                        for emp in all_employees:
+                            name = emp.get('name', '').lower()
+                            similarity = SequenceMatcher(None, search_name.lower(), name).ratio()
+                            if similarity >= 0.55:  # 55% de similitud - ULTRA FLEXIBLE
+                                matches.append((emp, similarity))
+
+                        matches.sort(key=lambda x: x[1], reverse=True)
+
+                        if matches:
+                            logger.info(f"  ✓ Fuzzy encontró {len(matches)} coincidencias")
+                            results = [matches[0][0]]  # Tomar la mejor coincidencia
+                        else:
+                            # Como último recurso, listar todos los empleados
+                            logger.warning(f"  ❌ No encontrado (fuzzy): {search_name}")
+                            all_employees_sql = "SELECT id, name FROM employees ORDER BY name LIMIT 30"
+                            all_emps = self._execute_query(all_employees_sql)
+                            emp_list = '\n'.join([f"  • {e.get('name', 'N/A')}" for e in all_emps])
+                            return (
+                                f"❌ No encontré empleado '{search_name}' en el sistema (ni con tolerancia ortográfica).\n\n"
+                                f"📋 Empleados disponibles:\n{emp_list}\n\n"
+                                f"¿Quizás quisiste decir alguno de estos? Intenta de nuevo con el nombre exacto."
+                            )
+                    else:
+                        return "❌ No hay empleados en el sistema."
 
                 emp = results[0]
                 response = f"📋 **Expediente: {emp.get('name', 'N/A')}**\n\n"
@@ -265,64 +333,60 @@ class RrhhDataService:
 
     def _process_loans_query(self, query: str, user_roles: List[str]) -> str:
         """
-        Procesa consulta sobre créditos y estudios de crédito
+        Procesa consulta sobre créditos y estudios de crédito CREDID
         """
-        logger.info(f"  💰 Procesando query de CRÉDITOS: {query}")
+        logger.info(f"  💰 Procesando query de CRÉDITOS CREDID: {query}")
 
         try:
             state_filter = self._detect_state_filter(query)
+            logger.info(f"  📊 Estado detectado: {state_filter}")
 
-            sql = f"""
-            SELECT csr.id, u.name as empleado, csr.property as propiedad,
-                   csr.request_status as estado, csr.request_reason as razon,
-                   csr.sales_comments as comentarios, csr.created_at as fecha
-            FROM credit_study_requests csr
-            LEFT JOIN users u ON csr.user_id = u.id
-            WHERE 1=1
-            {f"AND csr.request_status = '{state_filter}'" if state_filter else ""}
-            ORDER BY csr.created_at DESC
-            LIMIT 20
-            """
+            # Query MÁS SIMPLE primero
+            if state_filter:
+                sql = f"SELECT id, property, request_status, request_reason FROM credit_study_requests WHERE request_status = '{state_filter}' LIMIT 25"
+            else:
+                sql = "SELECT id, property, request_status, request_reason FROM credit_study_requests LIMIT 25"
 
+            logger.info(f"  📝 SQL: {sql}")
             results = self._execute_query(sql)
+            logger.info(f"  ✓ Resultados encontrados: {len(results) if results else 0}")
 
             if not results:
                 estado = f" ({state_filter})" if state_filter else ""
-                return f"ℹ️ No hay solicitudes de crédito{estado}."
+                return f"ℹ️ No hay solicitudes de estudio de crédito CREDID{estado}."
 
-            response = f"💰 **Solicitudes de Estudio de Crédito** ({len(results)})\n\n"
-            if state_filter:
-                response += f"_Filtro: {state_filter}_\n\n"
+            response = f"💰 **Solicitudes de Estudio de Crédito CREDID** ({len(results)})\n\n"
 
             for loan in results:
-                estado = loan.get('estado', '?')
+                id_num = loan.get('id', '?')
+                estado = loan.get('request_status', '?')
+                propiedad = loan.get('property', 'Sin especificar')
+                razon = loan.get('request_reason', 'Sin especificar')
 
                 # Mapear estado a símbolos y texto en español
                 if estado == 'approved':
                     icon = "✅"
-                    estado_text = "Aprobado"
+                    estado_text = "APROBADO"
                 elif estado == 'pending':
                     icon = "⏳"
-                    estado_text = "Pendiente"
+                    estado_text = "PENDIENTE"
                 elif estado == 'rejected':
                     icon = "❌"
-                    estado_text = "Rechazado"
+                    estado_text = "RECHAZADO"
                 else:
                     icon = "❓"
-                    estado_text = estado
+                    estado_text = str(estado).upper()
 
-                response += f"{icon} **{loan.get('empleado', 'N/A')}** - Estado: **{estado_text}**\n"
-                response += f"   Propiedad: {loan.get('propiedad', 'N/A')}\n"
-                response += f"   Motivo: {loan.get('razon', 'Sin especificar')}\n"
-                if loan.get('comentarios'):
-                    response += f"   Comentarios: {loan.get('comentarios')}\n"
-                response += f"   Fecha: {loan.get('fecha')}\n\n"
+                response += f"{icon} **Solicitud #{id_num}** - {estado_text}\n"
+                response += f"🏠 Propiedad: {propiedad}\n"
+                response += f"📝 Motivo: {razon}\n"
+                response += f"{'─'*40}\n\n"
 
             return response
 
         except Exception as e:
-            logger.error(f"❌ Error en créditos: {str(e)[:150]}")
-            return f"⚠️ Error: {str(e)[:80]}"
+            logger.error(f"❌ Error en créditos CREDID: {str(e)[:150]}", exc_info=True)
+            return f"⚠️ Error al procesar solicitudes de crédito: {str(e)[:100]}"
 
     def _process_policies_query(self, query: str, user_roles: List[str]) -> str:
         """
@@ -399,9 +463,261 @@ class RrhhDataService:
             logger.error(f"❌ Error en recordatorios: {str(e)[:150]}")
             return f"⚠️ Error: {str(e)[:80]}"
 
+    def _process_birthdays_query(self, query: str, user_roles: List[str]) -> str:
+        """
+        Procesa consulta sobre cumpleaños
+        """
+        logger.info(f"  🎂 Procesando query de CUMPLEAÑOS: {query}")
+
+        try:
+            birthdays_list = self._get_birthdays_this_week()
+
+            if not birthdays_list:
+                return "No hay cumpleaños para esa semana 🎈"
+
+            return "\n".join(birthdays_list)
+
+        except Exception as e:
+            logger.error(f"❌ Error en cumpleaños: {str(e)[:150]}", exc_info=True)
+            return f"Error: {str(e)[:50]}"
+
+    def _get_all_birthdays(self) -> Dict[str, Dict]:
+        """
+        Obtiene TODOS los cumpleaños de empleados activos
+        Intenta múltiples nombres de columna para compatibilidad
+        """
+        if not self.sql_database:
+            return {}
+
+        try:
+            # Variantes posibles de nombres de columna
+            birthday_columns = ['birthday', 'date_of_birth', 'fecha_nacimiento', 'born_date', 'birth_date']
+            birthday_column = None
+            results = None
+
+            # Intenta cada columna
+            for col in birthday_columns:
+                try:
+                    sql = f"SELECT id, name, {col} FROM employees WHERE contract_status = 1 ORDER BY name LIMIT 200"
+                    results = self._execute_query(sql)
+                    if results is not None and results != []:
+                        birthday_column = col
+                        logger.info(f"  ✓ Columna de cumpleaños encontrada: {col}")
+                        break
+                except Exception as e:
+                    logger.warning(f"  ⚠️ Intentó {col}, no encontrado: {str(e)[:50]}")
+                    continue
+
+            # Si no encontró ninguna columna válida o no hay datos
+            if birthday_column is None or not results:
+                logger.warning("⚠️ No se encontró columna de cumpleaños o no hay datos")
+                return {}
+
+            birthdays_dict = {}
+
+            for emp in results:
+                try:
+                    name = emp.get('name', 'Desconocido')
+                    birthday_str = emp.get(birthday_column)
+
+                    if not birthday_str:
+                        continue
+
+                    # Parsear la fecha de cumpleaños
+                    if isinstance(birthday_str, str):
+                        birthday_obj = None
+                        for fmt in ['%Y-%m-%d', '%d-%m-%Y', '%d/%m/%Y', '%Y/%m/%d']:
+                            try:
+                                birthday_obj = datetime.strptime(birthday_str, fmt)
+                                break
+                            except:
+                                continue
+
+                        if not birthday_obj:
+                            continue
+                    else:
+                        birthday_obj = birthday_str
+
+                    # Formatear fecha para mostrar
+                    date_str = birthday_obj.strftime("%d de %B")
+                    date_str = date_str.replace('January', 'Enero').replace('February', 'Febrero').replace('March', 'Marzo').replace('April', 'Abril').replace('May', 'Mayo').replace('June', 'Junio').replace('July', 'Julio').replace('August', 'Agosto').replace('September', 'Septiembre').replace('October', 'Octubre').replace('November', 'Noviembre').replace('December', 'Diciembre')
+
+                    birthdays_dict[name] = {
+                        'date_str': date_str,
+                        'birthday': birthday_obj
+                    }
+
+                except Exception as e:
+                    logger.warning(f"⚠️ Error procesando cumpleaños: {str(e)[:50]}")
+                    continue
+
+            logger.info(f"  🎂 Cumpleaños cargados: {len(birthdays_dict)}")
+            return birthdays_dict
+
+        except Exception as e:
+            logger.error(f"❌ Error en _get_all_birthdays: {str(e)[:150]}")
+            return {}
+
+    def _filter_birthdays_by_week(self, all_birthdays: Dict[str, Dict], today: datetime) -> Dict[str, Dict]:
+        """
+        Filtra cumpleaños de los próximos 7 días
+        """
+        week_birthdays = {}
+
+        for name, bday_info in all_birthdays.items():
+            birthday = bday_info['birthday']
+
+            # Generar fechas de esta semana
+            for i in range(7):
+                check_date = today + timedelta(days=i)
+                if birthday.month == check_date.month and birthday.day == check_date.day:
+                    week_birthdays[name] = bday_info
+                    break
+
+        return week_birthdays
+
+    def _filter_birthdays_by_month(self, all_birthdays: Dict[str, Dict], today: datetime) -> Dict[str, Dict]:
+        """
+        Filtra cumpleaños del mes actual
+        """
+        month_birthdays = {}
+        current_month = today.month
+
+        for name, bday_info in all_birthdays.items():
+            birthday = bday_info['birthday']
+            if birthday.month == current_month:
+                month_birthdays[name] = bday_info
+
+        return month_birthdays
+
+    def _get_birthdays_this_month(self) -> Dict[str, List[str]]:
+        """
+        Obtiene empleados con cumpleaños en este mes
+        Retorna: {'15 Abril': ['Juan', 'María'], ...}
+        """
+        if not self.sql_database:
+            return {}
+
+        try:
+            today = datetime.now()
+            current_month = today.month
+
+            sql = "SELECT id, name, birthday FROM employees WHERE contract_status = 1 ORDER BY name LIMIT 100"
+            results = self._execute_query(sql)
+
+            if not results:
+                return {}
+
+            birthdays_dict = {}
+
+            for emp in results:
+                try:
+                    birthday_str = emp.get('birthday')
+                    if not birthday_str:
+                        continue
+
+                    # Parsear la fecha de cumpleaños
+                    if isinstance(birthday_str, str):
+                        for fmt in ['%Y-%m-%d', '%d-%m-%Y', '%d/%m/%Y', '%Y/%m/%d']:
+                            try:
+                                birthday = datetime.strptime(birthday_str, fmt)
+                                break
+                            except:
+                                continue
+                        else:
+                            continue
+                    else:
+                        birthday = birthday_str
+
+                    # Verificar si está en este mes
+                    if birthday.month == current_month:
+                        date_str = birthday.strftime("%d de %B").replace('January', 'Enero').replace('February', 'Febrero').replace('March', 'Marzo').replace('April', 'Abril').replace('May', 'Mayo').replace('June', 'Junio').replace('July', 'Julio').replace('August', 'Agosto').replace('September', 'Septiembre').replace('October', 'Octubre').replace('November', 'Noviembre').replace('December', 'Diciembre')
+
+                        if date_str not in birthdays_dict:
+                            birthdays_dict[date_str] = []
+                        birthdays_dict[date_str].append(emp.get('name', 'Desconocido'))
+
+                except Exception as e:
+                    logger.warning(f"⚠️ Error procesando cumpleaños: {str(e)}")
+                    continue
+
+            logger.info(f"  🎂 Cumpleaños este mes: {len(birthdays_dict)}")
+            return birthdays_dict
+
+        except Exception as e:
+            logger.error(f"❌ Error en _get_birthdays_this_month: {str(e)[:150]}")
+            return {}
+
+    def _get_birthdays_this_week(self) -> List[str]:
+        """
+        Obtiene empleados con cumpleaños en los próximos 7 días
+        """
+        if not self.sql_database:
+            logger.warning("❌ SQL Database no disponible")
+            return []
+
+        try:
+            today = datetime.now()
+            logger.info(f"🎂 Buscando cumpleaños desde {today.date()}")
+
+            # Generar las fechas de esta semana (próximos 7 días)
+            week_dates = []
+            for i in range(7):
+                date = today + timedelta(days=i)
+                week_dates.append(date)
+
+            # Buscar empleados con cumpleaños en esas fechas
+            birthdays = []
+            sql = "SELECT id, name, birthday FROM employees WHERE contract_status = 1 ORDER BY name LIMIT 100"
+            logger.info(f"📝 SQL: {sql}")
+            results = self._execute_query(sql)
+            logger.info(f"✓ Resultados: {len(results) if results else 0} registros")
+
+            if not results:
+                logger.info("⚠️ No hay empleados")
+                return []
+
+            for emp in results:
+                try:
+                    birthday_str = emp.get('birthday')
+                    if not birthday_str:
+                        continue
+
+                    # Parsear la fecha de cumpleaños
+                    if isinstance(birthday_str, str):
+                        for fmt in ['%Y-%m-%d', '%d-%m-%Y', '%d/%m/%Y', '%Y/%m/%d']:
+                            try:
+                                birthday = datetime.strptime(birthday_str, fmt)
+                                break
+                            except:
+                                continue
+                        else:
+                            continue
+                    else:
+                        birthday = birthday_str
+
+                    # Comparar mes y día (ignorar año)
+                    for date in week_dates:
+                        if birthday.month == date.month and birthday.day == date.day:
+                            name = emp.get('name', 'Desconocido')
+                            birthdays.append(name)
+                            logger.info(f"  ✓ {name}")
+                            break
+
+                except Exception as e:
+                    logger.warning(f"⚠️ Error: {str(e)}")
+                    continue
+
+            logger.info(f"  🎂 Cumpleaños encontrados esta semana: {len(birthdays)}")
+            return birthdays
+
+        except Exception as e:
+            logger.error(f"❌ Error en _get_birthdays_this_week: {str(e)[:150]}")
+            return []
+
     def _extract_search_term(self, query: str, context_keywords: List[str]) -> Optional[str]:
         """
-        Extrae término de búsqueda limpio - SOLO EL NOMBRE
+        Extrae término de búsqueda limpio - TOLERA FALTAS ORTOGRÁFICAS
         """
         query_lower = query.lower()
         stop_words = {'de', 'del', 'la', 'el', 'los', 'las', 'una', 'un', 'unos', 'unas', 'es', 'son', 'y', 'el', 'la'}
@@ -440,25 +756,83 @@ class RrhhDataService:
 
         return None
 
+    def _fuzzy_search_database(self, table: str, column: str, search_term: str, similarity_threshold: float = 0.55) -> List[Dict[str, Any]]:
+        """
+        Busca en base de datos tolerando faltas ortográficas desde 55%
+        """
+        if not search_term or not self.sql_database:
+            return []
+
+        try:
+            # Primero intentar búsqueda exacta/like
+            sql = f"SELECT * FROM {table} WHERE LOWER({column}) LIKE LOWER('%{search_term}%') LIMIT 5"
+            results = self._execute_query(sql)
+
+            if results:
+                logger.info(f"  ✓ Búsqueda exacta encontró {len(results)} resultados")
+                return results
+
+            # Si no encuentra, obtener todos los registros y filtrar por similitud
+            logger.info(f"  ◇ Búsqueda exacta vacía, intentando fuzzy matching...")
+            sql_all = f"SELECT * FROM {table} LIMIT 100"
+            all_results = self._execute_query(sql_all)
+
+            if not all_results:
+                return []
+
+            # Comparar cada registro por similitud
+            matches = []
+            for row in all_results:
+                value = str(row.get(column, '')).lower()
+                similarity = SequenceMatcher(None, search_term.lower(), value).ratio()
+
+                if similarity >= similarity_threshold:
+                    matches.append((row, similarity))
+
+            # Ordenar por similitud descendente
+            matches.sort(key=lambda x: x[1], reverse=True)
+            logger.info(f"  ◇ Fuzzy encontró {len(matches)} coincidencias con {similarity_threshold*100:.0f}% similitud")
+
+            return [match[0] for match in matches[:5]]
+
+        except Exception as e:
+            logger.warning(f"⚠️ Error en fuzzy_search_database: {str(e)}")
+            return []
+
+
     def _detect_state_filter(self, query: str) -> Optional[str]:
         """
-        Detecta si la query especifica un estado particular
+        Detecta estado con ULTRA TOLERANCIA ORTOGRÁFICA desde 50%
+        Busca: pending, approved, rejected, completed
         """
         query_lower = query.lower()
+        words = query_lower.split()
 
         state_map = {
-            'pending': ['pendiente', 'espera', 'por aprobar'],
-            'approved': ['aprobada', 'aprobado', 'acepta'],
-            'rejected': ['rechazada', 'rechazado', 'denegada'],
-            'completed': ['completada', 'completado', 'hecha', 'hecho'],
+            'pending': ['pendiente', 'espera', 'por aprobar', 'pendientes'],
+            'approved': ['aprobada', 'aprobado', 'acepta', 'aceptado', 'aprobadas'],
+            'rejected': ['rechazada', 'rechazado', 'denegada', 'rechazadas'],
+            'completed': ['completada', 'completado', 'hecha', 'hecho', 'completadas'],
         }
 
-        for state, keywords in state_map.items():
-            for keyword in keywords:
-                if keyword in query_lower:
-                    return state
+        best_match = None
+        best_score = 0.0
 
-        return None
+        for state, keywords in state_map.items():
+            for word in words:
+                for keyword in keywords:
+                    # Similitud exacta
+                    if keyword in word or word in keyword:
+                        return state
+
+                    # Similitud difusa desde 50%
+                    similarity = SequenceMatcher(None, word, keyword).ratio()
+                    if similarity >= 0.50 and similarity > best_score:
+                        best_score = similarity
+                        best_match = state
+
+        return best_match
+
 
     def get_pending_reminders_for_greeting(self, user_id: int = None) -> dict:
         """
@@ -478,11 +852,11 @@ class RrhhDataService:
             except Exception as e:
                 logger.warning(f"⚠️ No se pudo consultar vacaciones: {str(e)[:100]}")
 
-            # Créditos pendientes (tabla opcional)
+            # Créditos CREDID pendientes
             try:
                 result = self._execute_query("SELECT COUNT(*) as total FROM credit_study_requests WHERE request_status = 'pending'")
                 if result and result[0].get('total', 0) > 0:
-                    reminders.append({"emoji": "💰", "titulo": f"{result[0]['total']} créditos pendientes", "tipo": "creditos"})
+                    reminders.append({"emoji": "💳", "titulo": f"{result[0]['total']} solicitud(es) de crédito CREDID pendiente(s)", "tipo": "credid"})
             except Exception as e:
                 logger.warning(f"⚠️ Tabla credit_study_requests no disponible: {str(e)[:100]}")
 
@@ -494,8 +868,12 @@ class RrhhDataService:
             except Exception as e:
                 logger.warning(f"⚠️ No se pudo consultar recordatorios: {str(e)[:100]}")
 
-            return {"count": len(reminders), "reminders": reminders[:5], "error": None}
+            # Cumpleaños esta semana (deshabilitado por ahora)
+            reminders.append({"emoji": "🎂", "titulo": "Esta semana no hay cumpleaños", "tipo": "cumpleaños"})
+
+            return {"count": len(reminders), "reminders": reminders[:10], "error": None}
 
         except Exception as e:
             logger.error(f"❌ Error en recordatorios automáticos: {str(e)[:150]}")
             return {"count": 0, "reminders": [], "error": str(e)[:100]}
+
