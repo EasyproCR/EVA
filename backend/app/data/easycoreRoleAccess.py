@@ -122,7 +122,7 @@ def normalize_roles(raw_roles: Iterable[str] | None) -> set[str]:
         elif "market" in role or "mercadeo" in role:
             normalized.add("servicio_al_cliente")
         elif "oper" in role:
-            normalized.add("gerente")
+            normalized.add("gerente")                                                                           
 
     return normalized
 

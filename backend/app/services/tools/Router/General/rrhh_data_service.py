@@ -186,14 +186,144 @@ class RrhhDataService:
     def _process_employees_query(self, query: str, user_roles: List[str]) -> str:
         """
         Procesa consulta sobre expedientes de empleados
+        Por defecto busca ACTIVOS, a menos que explícitamente pregunte por DESEMPLEADOS/INACTIVOS
         """
         logger.info(f"  👤 Procesando query de EMPLEADOS: {query}")
 
         try:
             query_lower = query.lower()
 
+            # Detectar si busca desempleados/inactivos
+            busca_inactivos = any(word in query_lower for word in [
+                'desempleado', 'inactivo', 'ya no trabaja', 'que no trabaja',
+                'retirado', 'despedido', 'salió', 'se fue', 'anterior', 'antiguos',
+                'excluido', 'baja', 'cancelado', 'finalizó'
+            ])
+
+            # Determinar filtro de estado
+            if busca_inactivos:
+                status_filter = "contract_status = 0"
+                estado_titulo = "DESEMPLEADOS/INACTIVOS"
+                logger.info(f"  ⚠️ Buscando empleados INACTIVOS")
+            else:
+                status_filter = "contract_status = 1"
+                estado_titulo = "ACTIVOS"
+                logger.info(f"  ✓ Buscando empleados ACTIVOS")
+
             # Detectar lista de todos
             ver_todos = any(kw in query_lower for kw in ['todos', 'lista', 'listado', 'hay', 'cuantos', 'cuántos'])
+
+            if ver_todos:
+                sql = f"SELECT id, name, email, job_position, phone_number FROM employees WHERE {status_filter} ORDER BY name LIMIT 50"
+                results = self._execute_query(sql)
+
+                if not results:
+                    return f"ℹ️ No hay empleados {estado_titulo.lower()} en el sistema."
+
+                response = f"📋 **Lista de Empleados {estado_titulo}** ({len(results)})\n\n"
+                for emp in results:
+                    try:
+                        name = getattr(emp, 'name', 'N/A') if isinstance(emp, object) else emp.get('name', 'N/A')
+                        job_pos = getattr(emp, 'job_position', 'Sin puesto') if isinstance(emp, object) else emp.get('job_position', 'Sin puesto')
+                        email = getattr(emp, 'email', 'N/A') if isinstance(emp, object) else emp.get('email', 'N/A')
+                        phone = getattr(emp, 'phone_number', 'N/A') if isinstance(emp, object) else emp.get('phone_number', 'N/A')
+                        response += f"- **{name}** - {job_pos}\n"
+                        response += f"  📧 {email} | 📞 {phone}\n"
+                    except Exception as e:
+                        logger.warning(f"Error procesando empleado: {str(e)}")
+                        continue
+
+                return response
+
+            # Búsqueda específica
+            search_name = self._extract_search_term(query, ["expediente", "empleado", "datos"])
+            if search_name:
+                logger.info(f"  🔍 Buscando empleado: '{search_name}' ({estado_titulo})")
+
+                # Búsqueda simple sin complicaciones
+                sql = f"""
+                SELECT id, name, email, phone_number, job_position, profession,
+                       national_id, address, birthday, marital_status, contract
+                FROM employees
+                WHERE UPPER(name) LIKE UPPER('%{search_name}%')
+                AND {status_filter}
+                ORDER BY name
+                LIMIT 1
+                """
+
+                logger.info(f"  📝 Buscando: UPPER(name) LIKE UPPER('%{search_name}%')")
+                results = self._execute_query(sql)
+
+                if not results:
+                    # Intentar búsqueda fuzzy con tolerancia ortográfica
+                    logger.info(f"  ◇ Búsqueda exacta vacía, intentando fuzzy matching...")
+                    sql_all = f"""
+                    SELECT id, name, email, phone_number, job_position, profession,
+                           national_id, address, birthday, marital_status, contract
+                    FROM employees
+                    WHERE {status_filter}
+                    LIMIT 100
+                    """
+                    all_employees = self._execute_query(sql_all)
+
+                    if all_employees:
+                        # Comparar por similitud
+                        matches = []
+                        for emp in all_employees:
+                            name = (getattr(emp, 'name', '') if isinstance(emp, object) else emp.get('name', '')).lower()
+                            similarity = SequenceMatcher(None, search_name.lower(), name).ratio()
+                            if similarity >= 0.55:  # 55% de similitud - ULTRA FLEXIBLE
+                                matches.append((emp, similarity))
+
+                        matches.sort(key=lambda x: x[1], reverse=True)
+
+                        if matches:
+                            logger.info(f"  ✓ Fuzzy encontró {len(matches)} coincidencias")
+                            results = [matches[0][0]]  # Tomar la mejor coincidencia
+                        else:
+                            # Como último recurso, listar solo empleados del tipo buscado
+                            logger.warning(f"  ❌ No encontrado (fuzzy): {search_name}")
+                            all_employees_sql = f"SELECT id, name FROM employees WHERE {status_filter} ORDER BY name LIMIT 30"
+                            all_emps = self._execute_query(all_employees_sql)
+                            emp_list = '\n'.join([f"  • {getattr(e, 'name', 'N/A') if isinstance(e, object) else e.get('name', 'N/A')}" for e in (all_emps or [])])
+                            return (
+                                f"❌ No encontré empleado '{search_name}' en el sistema (ni con tolerancia ortográfica).\n\n"
+                                f"📋 Empleados {estado_titulo.lower()} disponibles:\n{emp_list}\n\n"
+                                f"¿Quizás quisiste decir alguno de estos? Intenta de nuevo con el nombre exacto."
+                            )
+                    else:
+                        return f"❌ No hay empleados {estado_titulo.lower()} en el sistema."
+
+                emp = results[0]
+                emp_name = getattr(emp, 'name', 'N/A') if isinstance(emp, object) else emp.get('name', 'N/A')
+                emp_email = getattr(emp, 'email', 'N/A') if isinstance(emp, object) else emp.get('email', 'N/A')
+                emp_phone = getattr(emp, 'phone_number', 'N/A') if isinstance(emp, object) else emp.get('phone_number', 'N/A')
+                emp_job = getattr(emp, 'job_position', 'N/A') if isinstance(emp, object) else emp.get('job_position', 'N/A')
+                emp_prof = getattr(emp, 'profession', 'N/A') if isinstance(emp, object) else emp.get('profession', 'N/A')
+                emp_id = getattr(emp, 'national_id', 'N/A') if isinstance(emp, object) else emp.get('national_id', 'N/A')
+                emp_addr = getattr(emp, 'address', 'N/A') if isinstance(emp, object) else emp.get('address', 'N/A')
+                emp_bday = getattr(emp, 'birthday', 'N/A') if isinstance(emp, object) else emp.get('birthday', 'N/A')
+                emp_marital = getattr(emp, 'marital_status', 'N/A') if isinstance(emp, object) else emp.get('marital_status', 'N/A')
+                emp_contract = getattr(emp, 'contract', 'N/A') if isinstance(emp, object) else emp.get('contract', 'N/A')
+
+                response = f"📋 **Expediente: {emp_name}**\n\n"
+                response += f"- **Email:** {emp_email}\n"
+                response += f"- **Teléfono:** {emp_phone}\n"
+                response += f"- **Puesto:** {emp_job}\n"
+                response += f"- **Profesión:** {emp_prof}\n"
+                response += f"- **Cédula:** {emp_id}\n"
+                response += f"- **Dirección:** {emp_addr}\n"
+                response += f"- **Cumpleaños:** {emp_bday}\n"
+                response += f"- **Estado Civil:** {emp_marital}\n"
+                response += f"- **Tipo Contrato:** {emp_contract}\n"
+
+                return response
+
+            return "❓ Pregunta por un empleado específico"
+
+        except Exception as e:
+            logger.error(f"❌ Error en empleados: {str(e)[:150]}")
+            return f"⚠️ Error: {str(e)[:80]}"
 
             if ver_todos:
                 sql = "SELECT id, name, email, job_position, phone_number FROM employees WHERE contract_status = 1 ORDER BY name LIMIT 50"
@@ -204,8 +334,16 @@ class RrhhDataService:
 
                 response = f"📋 **Lista de Empleados Activos** ({len(results)})\n\n"
                 for emp in results:
-                    response += f"- **{emp.get('name', 'N/A')}** - {emp.get('job_position', 'Sin puesto')}\n"
-                    response += f"  📧 {emp.get('email', 'N/A')} | 📞 {emp.get('phone_number', 'N/A')}\n"
+                    try:
+                        name = getattr(emp, 'name', 'N/A')
+                        job_pos = getattr(emp, 'job_position', 'Sin puesto')
+                        email = getattr(emp, 'email', 'N/A')
+                        phone = getattr(emp, 'phone_number', 'N/A')
+                        response += f"- **{name}** - {job_pos}\n"
+                        response += f"  📧 {email} | 📞 {phone}\n"
+                    except Exception as e:
+                        logger.warning(f"Error procesando empleado: {str(e)}")
+                        continue
 
                 return response
 
@@ -255,30 +393,41 @@ class RrhhDataService:
                             logger.info(f"  ✓ Fuzzy encontró {len(matches)} coincidencias")
                             results = [matches[0][0]]  # Tomar la mejor coincidencia
                         else:
-                            # Como último recurso, listar todos los empleados
+                            # Como último recurso, listar solo empleados ACTIVOS
                             logger.warning(f"  ❌ No encontrado (fuzzy): {search_name}")
-                            all_employees_sql = "SELECT id, name FROM employees ORDER BY name LIMIT 30"
+                            all_employees_sql = "SELECT id, name FROM employees WHERE contract_status = 1 ORDER BY name LIMIT 30"
                             all_emps = self._execute_query(all_employees_sql)
-                            emp_list = '\n'.join([f"  • {e.get('name', 'N/A')}" for e in all_emps])
+                            emp_list = '\n'.join([f"  • {getattr(e, 'name', 'N/A')}" for e in (all_emps or [])])
                             return (
                                 f"❌ No encontré empleado '{search_name}' en el sistema (ni con tolerancia ortográfica).\n\n"
-                                f"📋 Empleados disponibles:\n{emp_list}\n\n"
+                                f"📋 Empleados activos disponibles:\n{emp_list}\n\n"
                                 f"¿Quizás quisiste decir alguno de estos? Intenta de nuevo con el nombre exacto."
                             )
                     else:
                         return "❌ No hay empleados en el sistema."
 
                 emp = results[0]
-                response = f"📋 **Expediente: {emp.get('name', 'N/A')}**\n\n"
-                response += f"- **Email:** {emp.get('email', 'N/A')}\n"
-                response += f"- **Teléfono:** {emp.get('phone_number', 'N/A')}\n"
-                response += f"- **Puesto:** {emp.get('job_position', 'N/A')}\n"
-                response += f"- **Profesión:** {emp.get('profession', 'N/A')}\n"
-                response += f"- **Cédula:** {emp.get('national_id', 'N/A')}\n"
-                response += f"- **Dirección:** {emp.get('address', 'N/A')}\n"
-                response += f"- **Cumpleaños:** {emp.get('birthday', 'N/A')}\n"
-                response += f"- **Estado Civil:** {emp.get('marital_status', 'N/A')}\n"
-                response += f"- **Tipo Contrato:** {emp.get('contract', 'N/A')}\n"
+                emp_name = getattr(emp, 'name', 'N/A')
+                emp_email = getattr(emp, 'email', 'N/A')
+                emp_phone = getattr(emp, 'phone_number', 'N/A')
+                emp_job = getattr(emp, 'job_position', 'N/A')
+                emp_prof = getattr(emp, 'profession', 'N/A')
+                emp_id = getattr(emp, 'national_id', 'N/A')
+                emp_addr = getattr(emp, 'address', 'N/A')
+                emp_bday = getattr(emp, 'birthday', 'N/A')
+                emp_marital = getattr(emp, 'marital_status', 'N/A')
+                emp_contract = getattr(emp, 'contract', 'N/A')
+
+                response = f"📋 **Expediente: {emp_name}**\n\n"
+                response += f"- **Email:** {emp_email}\n"
+                response += f"- **Teléfono:** {emp_phone}\n"
+                response += f"- **Puesto:** {emp_job}\n"
+                response += f"- **Profesión:** {emp_prof}\n"
+                response += f"- **Cédula:** {emp_id}\n"
+                response += f"- **Dirección:** {emp_addr}\n"
+                response += f"- **Cumpleaños:** {emp_bday}\n"
+                response += f"- **Estado Civil:** {emp_marital}\n"
+                response += f"- **Tipo Contrato:** {emp_contract}\n"
 
                 return response
 
@@ -334,59 +483,79 @@ class RrhhDataService:
     def _process_loans_query(self, query: str, user_roles: List[str]) -> str:
         """
         Procesa consulta sobre créditos y estudios de crédito CREDID
+        Por defecto muestra solo PENDIENTES (activos)
         """
         logger.info(f"  💰 Procesando query de CRÉDITOS CREDID: {query}")
 
         try:
+            # Detectar si hay filtro de estado específico
             state_filter = self._detect_state_filter(query)
-            logger.info(f"  📊 Estado detectado: {state_filter}")
 
-            # Query MÁS SIMPLE primero
-            if state_filter:
-                sql = f"SELECT id, property, request_status, request_reason FROM credit_study_requests WHERE request_status = '{state_filter}' LIMIT 25"
-            else:
-                sql = "SELECT id, property, request_status, request_reason FROM credit_study_requests LIMIT 25"
+            # Por defecto mostrar PENDIENTES (créditos activos)
+            if not state_filter:
+                state_filter = 'pending'
 
-            logger.info(f"  📝 SQL: {sql}")
-            results = self._execute_query(sql)
-            logger.info(f"  ✓ Resultados encontrados: {len(results) if results else 0}")
+            logger.info(f"  📊 Estado a mostrar: {state_filter}")
 
-            if not results:
-                estado = f" ({state_filter})" if state_filter else ""
-                return f"ℹ️ No hay solicitudes de estudio de crédito CREDID{estado}."
+            # BUSCAR EN credit_study_requests CON FILTRO DE ESTADO
+            sql_credit_study = f"SELECT id, property, request_status, request_reason FROM credit_study_requests WHERE request_status = '{state_filter}' LIMIT 50"
+            logger.info(f"  📝 SQL: {sql_credit_study}")
+            results_credit_study = self._execute_query(sql_credit_study)
+            count_study = len(results_credit_study) if results_credit_study else 0
+            logger.info(f"  ✓ Resultados encontrados: {count_study}")
 
-            response = f"💰 **Solicitudes de Estudio de Crédito CREDID** ({len(results)})\n\n"
+            # BUSCAR EN campo credid de employees (SIN FILTRO, siempre mostrar)
+            sql_credid = "SELECT id, name, credid FROM employees WHERE credid IS NOT NULL AND credid != '' LIMIT 50"
+            results_credid = self._execute_query(sql_credid)
+            count_credid = len(results_credid) if results_credid else 0
 
-            for loan in results:
-                id_num = loan.get('id', '?')
-                estado = loan.get('request_status', '?')
-                propiedad = loan.get('property', 'Sin especificar')
-                razon = loan.get('request_reason', 'Sin especificar')
+            # Si no hay nada
+            if count_study == 0 and count_credid == 0:
+                return f"ℹ️ No hay créditos {state_filter.upper()}."
 
-                # Mapear estado a símbolos y texto en español
-                if estado == 'approved':
-                    icon = "✅"
-                    estado_text = "APROBADO"
-                elif estado == 'pending':
-                    icon = "⏳"
-                    estado_text = "PENDIENTE"
-                elif estado == 'rejected':
-                    icon = "❌"
-                    estado_text = "RECHAZADO"
-                else:
-                    icon = "❓"
-                    estado_text = str(estado).upper()
+            # Construir respuesta
+            response = f"💰 **Créditos {state_filter.upper()}** (Total: {count_study + count_credid})\n\n"
 
-                response += f"{icon} **Solicitud #{id_num}** - {estado_text}\n"
-                response += f"🏠 Propiedad: {propiedad}\n"
-                response += f"📝 Motivo: {razon}\n"
-                response += f"{'─'*40}\n\n"
+            # Mostrar credit_study_requests
+            if count_study > 0:
+                response += f"**📋 Solicitudes de Estudio** ({count_study})\n"
+                for loan in results_credit_study:
+                    try:
+                        id_num = getattr(loan, 'id', '?')
+                        propiedad = getattr(loan, 'property', 'Sin especificar')
+                        razon = getattr(loan, 'request_reason', 'Sin especificar')
+
+                        response += f"⏳ Solicitud #{id_num}\n"
+                        response += f"   🏠 Propiedad: {propiedad}\n"
+                        response += f"   📝 Motivo: {razon}\n"
+                    except Exception as e:
+                        logger.error(f"Error procesando loan: {str(e)}")
+                        continue
+                response += "\n"
+
+            # Mostrar créditos CREDID de empleados
+            if count_credid > 0:
+                response += f"**💳 Créditos en Nómina** ({count_credid})\n"
+                for emp in results_credid:
+                    try:
+                        emp_id = getattr(emp, 'id', '?')
+                        emp_name = getattr(emp, 'name', 'Desconocido')
+                        credid_data = str(getattr(emp, 'credid', 'Sin detalles'))
+
+                        if len(credid_data) > 80:
+                            credid_data = credid_data[:80] + "..."
+
+                        response += f"👤 {emp_name} (ID: {emp_id})\n"
+                        response += f"   💳 {credid_data}\n"
+                    except Exception as e:
+                        logger.error(f"Error procesando employee: {str(e)}")
+                        continue
 
             return response
 
         except Exception as e:
-            logger.error(f"❌ Error en créditos CREDID: {str(e)[:150]}", exc_info=True)
-            return f"⚠️ Error al procesar solicitudes de crédito: {str(e)[:100]}"
+            logger.error(f"❌ Error en _process_loans_query: {str(e)}", exc_info=True)
+            return f"⚠️ Error al obtener créditos: {str(e)[:80]}"
 
     def _process_policies_query(self, query: str, user_roles: List[str]) -> str:
         """
@@ -466,20 +635,107 @@ class RrhhDataService:
     def _process_birthdays_query(self, query: str, user_roles: List[str]) -> str:
         """
         Procesa consulta sobre cumpleaños
+        Detecta si pregunta por cumpleaños de alguien específico o general
         """
         logger.info(f"  🎂 Procesando query de CUMPLEAÑOS: {query}")
 
         try:
+            # Detectar si pregunta por alguien específico
+            # Ej: "¿cuál es el cumpleaños de Juan?" o "cumpleaños de María"
+            lower_query = query.lower()
+
+            # Palabras clave que indican búsqueda de persona específica
+            if any(word in lower_query for word in ['de ', 'del ', 'cumpleaños de', 'nacimiento de', 'birthday of']):
+                # Intentar extraer nombre
+                keywords_to_remove = ['cumpleaño', 'cumpleaños', 'nacimiento', 'de ', 'del ', 'birthday', 'fecha de', 'cual es']
+                search_name = lower_query
+                for kw in keywords_to_remove:
+                    search_name = search_name.replace(kw, '').strip()
+
+                if search_name and len(search_name) > 2:
+                    logger.info(f"  🔍 Buscando cumpleaños de: {search_name}")
+                    return self._get_specific_birthday(search_name)
+
+            # Si no hay nombre específico, mostrar cumpleaños de esta semana
             birthdays_list = self._get_birthdays_this_week()
 
             if not birthdays_list:
-                return "No hay cumpleaños para esa semana 🎈"
+                return "📅 No hay cumpleaños para esta semana 🎈"
 
-            return "\n".join(birthdays_list)
+            response = "🎂 **Cumpleaños esta semana:**\n\n"
+            for i, name in enumerate(birthdays_list, 1):
+                response += f"{i}. {name}\n"
+
+            return response
 
         except Exception as e:
             logger.error(f"❌ Error en cumpleaños: {str(e)[:150]}", exc_info=True)
-            return f"Error: {str(e)[:50]}"
+            return f"⚠️ Error: {str(e)[:50]}"
+
+    def _get_specific_birthday(self, search_name: str) -> str:
+        """
+        Obtiene el cumpleaños de una persona específica
+        """
+        if not self.sql_database:
+            return "❌ Base de datos no disponible"
+
+        try:
+            # Buscar empleado activo con ese nombre
+            sql = f"""
+            SELECT id, name, birthday, contract_status
+            FROM employees
+            WHERE LOWER(name) LIKE LOWER('%{search_name}%')
+            AND contract_status = 1
+            LIMIT 1
+            """
+
+            logger.info(f"📝 Buscando: {sql}")
+            results = self._execute_query(sql)
+
+            if not results:
+                logger.info(f"⚠️ No encontró empleado activo: {search_name}")
+                return f"❌ No encontré a '{search_name}' en nómina activa."
+
+            emp = results[0]
+            emp_name = getattr(emp, 'name', 'Desconocido')
+            birthday_str = getattr(emp, 'birthday', None)
+
+            if not birthday_str:
+                return f"⚠️ {emp_name} no tiene fecha de cumpleaños registrada."
+
+            # Parsear fecha
+            birthday = None
+            if isinstance(birthday_str, str):
+                for fmt in ['%Y-%m-%d', '%d-%m-%Y', '%d/%m/%Y', '%Y/%m/%d']:
+                    try:
+                        birthday = datetime.strptime(birthday_str, fmt)
+                        break
+                    except:
+                        continue
+            else:
+                birthday = birthday_str
+
+            if not birthday:
+                return f"⚠️ No pude procesar la fecha de {emp_name}."
+
+            # Formatear respuesta
+            date_str = birthday.strftime("%d de %B").replace(
+                'January', 'Enero').replace('February', 'Febrero').replace('March', 'Marzo').replace(
+                'April', 'Abril').replace('May', 'Mayo').replace('June', 'Junio').replace(
+                'July', 'Julio').replace('August', 'Agosto').replace('September', 'Septiembre').replace(
+                'October', 'Octubre').replace('November', 'Noviembre').replace('December', 'Diciembre')
+
+            # Calcular edad
+            today = datetime.now()
+            age = today.year - birthday.year
+            if (today.month, today.day) < (birthday.month, birthday.day):
+                age -= 1
+
+            return f"🎂 **{emp_name}**\n📅 Cumpleaños: {date_str}\n🎉 Edad: {age} años"
+
+        except Exception as e:
+            logger.error(f"❌ Error en _get_specific_birthday: {str(e)[:150]}", exc_info=True)
+            return f"⚠️ Error: {str(e)[:80]}"
 
     def _get_all_birthdays(self) -> Dict[str, Dict]:
         """
@@ -650,7 +906,8 @@ class RrhhDataService:
 
     def _get_birthdays_this_week(self) -> List[str]:
         """
-        Obtiene empleados con cumpleaños en los próximos 7 días
+        Obtiene empleados ACTIVOS con cumpleaños en los próximos 7 días
+        Solo muestra empleados con contract_status = 1 (activos)
         """
         if not self.sql_database:
             logger.warning("❌ SQL Database no disponible")
@@ -666,32 +923,34 @@ class RrhhDataService:
                 date = today + timedelta(days=i)
                 week_dates.append(date)
 
-            # Buscar empleados con cumpleaños en esas fechas
+            # Buscar SOLO empleados ACTIVOS con cumpleaños
             birthdays = []
-            sql = "SELECT id, name, birthday FROM employees WHERE contract_status = 1 ORDER BY name LIMIT 100"
+            sql = "SELECT id, name, birthday, contract_status FROM employees WHERE contract_status = 1 AND birthday IS NOT NULL ORDER BY name LIMIT 200"
             logger.info(f"📝 SQL: {sql}")
             results = self._execute_query(sql)
-            logger.info(f"✓ Resultados: {len(results) if results else 0} registros")
+            logger.info(f"✓ Resultados: {len(results) if results else 0} empleados activos")
 
             if not results:
-                logger.info("⚠️ No hay empleados")
+                logger.info("⚠️ No hay empleados activos con cumpleaños")
                 return []
 
             for emp in results:
                 try:
-                    birthday_str = emp.get('birthday')
+                    # Usar getattr para objetos Row de SQLAlchemy
+                    birthday_str = getattr(emp, 'birthday', None)
                     if not birthday_str:
                         continue
 
                     # Parsear la fecha de cumpleaños
                     if isinstance(birthday_str, str):
+                        birthday = None
                         for fmt in ['%Y-%m-%d', '%d-%m-%Y', '%d/%m/%Y', '%Y/%m/%d']:
                             try:
                                 birthday = datetime.strptime(birthday_str, fmt)
                                 break
                             except:
                                 continue
-                        else:
+                        if not birthday:
                             continue
                     else:
                         birthday = birthday_str
@@ -699,13 +958,19 @@ class RrhhDataService:
                     # Comparar mes y día (ignorar año)
                     for date in week_dates:
                         if birthday.month == date.month and birthday.day == date.day:
-                            name = emp.get('name', 'Desconocido')
-                            birthdays.append(name)
-                            logger.info(f"  ✓ {name}")
+                            name = getattr(emp, 'name', 'Desconocido')
+                            contract_status = getattr(emp, 'contract_status', None)
+
+                            # Verificar que esté activo
+                            if contract_status == 1 or contract_status == True:
+                                birthdays.append(name)
+                                logger.info(f"  ✓ {name} (Activo)")
+                            else:
+                                logger.info(f"  ✗ {name} (Inactivo/Desempleado - EXCLUIDO)")
                             break
 
                 except Exception as e:
-                    logger.warning(f"⚠️ Error: {str(e)}")
+                    logger.warning(f"⚠️ Error procesando cumpleaños: {str(e)}")
                     continue
 
             logger.info(f"  🎂 Cumpleaños encontrados esta semana: {len(birthdays)}")
@@ -852,13 +1117,21 @@ class RrhhDataService:
             except Exception as e:
                 logger.warning(f"⚠️ No se pudo consultar vacaciones: {str(e)[:100]}")
 
-            # Créditos CREDID pendientes
+            # Créditos CREDID pendientes en credit_study_requests
             try:
                 result = self._execute_query("SELECT COUNT(*) as total FROM credit_study_requests WHERE request_status = 'pending'")
                 if result and result[0].get('total', 0) > 0:
-                    reminders.append({"emoji": "💳", "titulo": f"{result[0]['total']} solicitud(es) de crédito CREDID pendiente(s)", "tipo": "credid"})
+                    reminders.append({"emoji": "💳", "titulo": f"{result[0]['total']} solicitud(es) de estudio de crédito pendiente(s)", "tipo": "credid_study"})
             except Exception as e:
                 logger.warning(f"⚠️ Tabla credit_study_requests no disponible: {str(e)[:100]}")
+
+            # Créditos CREDID de empleados
+            try:
+                result = self._execute_query("SELECT COUNT(*) as total FROM employees WHERE credid IS NOT NULL AND credid != '' AND contract_status = 1")
+                if result and result[0].get('total', 0) > 0:
+                    reminders.append({"emoji": "💳", "titulo": f"{result[0]['total']} empleado(s) con créditos CREDID registrado(s)", "tipo": "credid_employees"})
+            except Exception as e:
+                logger.warning(f"⚠️ Campo credid de employees no disponible: {str(e)[:100]}")
 
             # Recordatorios manuales
             try:
