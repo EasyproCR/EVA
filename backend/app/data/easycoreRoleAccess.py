@@ -80,6 +80,34 @@ ROLE_TABLE_ACCESS: dict[str, set[str]] = {
         "table_user_calendar",
         "users",
     },
+    "operations": {
+        "customer_reminders",
+        "customers",
+        "operations",
+        "projects",
+        "property_assignments",
+        "third_party_properties",
+        "offers",
+        "users",
+        "personal_customers",
+        "organizations",
+        "organization_contacts",
+    },
+    "human_resources": {
+        "users",
+        "employees",
+        "departaments",
+        "employee_checklists",
+        "leave_requests",
+        "loan_requests",
+        "policy_guidelines",
+        "administrative_reminders",
+        "documents",
+        "acces_requests",
+        "countries",
+        "states",
+        "cities",
+    },
 }
 
 
@@ -87,10 +115,12 @@ ROLE_TABLE_ACCESS: dict[str, set[str]] = {
 ROLE_ALIASES: dict[str, str] = {
     "super_admin": "super_admin",
     "rrhh": "rrhh",
+    "human_resources": "rrhh",
     "soporte": "soporte",
     "ventas": "ventas",
     "servicio_al_cliente": "servicio_al_cliente",
     "gerente": "gerente",
+    "operations": "operations",
 }
 
 
