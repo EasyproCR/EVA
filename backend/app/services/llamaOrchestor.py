@@ -155,3 +155,60 @@ class LlamaOrchestor:
             return {"authorized": True, "count": 0, "reminders": [], "error": "Servicio no disponible"}
         except Exception as e:
             return {"authorized": True, "count": 0, "reminders": [], "error": str(e)}
+
+    def get_operations_reminders(self, user_id: int, user_roles: list[str]) -> dict:
+        """
+        Obtiene recordatorios pendientes de Operations si el usuario tiene permiso.
+        Para Alejandra: muestra citas pendientes en el saludo inicial.
+
+        Args:
+            user_id: ID del usuario autenticado
+            user_roles: Lista de roles del usuario
+
+        Returns:
+            dict con recordatorios o mensaje de no autorizado
+        """
+        # Verificar si tiene rol de operations
+        allowed_roles = {'super_admin', 'operations'}
+        roles_lower = [str(r).lower().strip() for r in user_roles]
+
+        if not any(role in allowed_roles for role in roles_lower):
+            return {"authorized": False, "count": 0, "reminders": []}
+
+        # Obtener recordatorios desde el operations_engine.data_service
+        try:
+            if hasattr(self.router, 'operations_engine') and self.router.operations_engine:
+                data_service = self.router.operations_engine.data_service
+                if data_service:
+                    result = data_service.get_pending_reminders_for_greeting(user_id)
+                    result["authorized"] = True
+                    return result
+            return {"authorized": True, "count": 0, "reminders": [], "error": "Servicio no disponible"}
+        except Exception as e:
+            return {"authorized": True, "count": 0, "reminders": [], "error": str(e)}
+
+    def get_customer_reminders(self, user_id: int = None) -> dict:
+        """
+        Obtiene recordatorios de clientes para el saludo inicial.
+
+        Args:
+            user_id: ID del usuario autenticado
+
+        Returns:
+            dict con recordatorios de clientes o mensaje de no autorizado
+        """
+        # Acceso abierto para todos los usuarios autenticados
+        if not user_id:
+            return {"authorized": False, "count": 0, "reminders": []}
+
+        # Obtener recordatorios desde el customer_reminders_engine.data_service
+        try:
+            if hasattr(self.router, 'customer_reminders_engine') and self.router.customer_reminders_engine:
+                data_service = self.router.customer_reminders_engine.data_service
+                if data_service:
+                    result = data_service.get_pending_reminders_for_greeting(user_id)
+                    result["authorized"] = True
+                    return result
+            return {"authorized": True, "count": 0, "reminders": [], "error": "Servicio no disponible"}
+        except Exception as e:
+            return {"authorized": True, "count": 0, "reminders": [], "error": str(e)}

@@ -65,6 +65,7 @@ async def saludo(
 
     # Verificar recordatorios para usuarios de RRHH
     user_roles = user_info.get('roles', [])
+    user_id = user_info.get('id')
     recordatorios_info = None
 
     try:
@@ -72,11 +73,11 @@ async def saludo(
         reminders_result = orch.get_rrhh_reminders(user_roles)
 
         if reminders_result.get("authorized") and reminders_result.get("count", 0) > 0:
-            # Construir mensaje de recordatorios
+            # Construir mensaje de recordatorios RRHH
             count = reminders_result["count"]
             reminders = reminders_result["reminders"]
 
-            recordatorios_texto = f"\n\n📋 **Tienes {count} alerta(s) pendiente(s):**\n"
+            recordatorios_texto = f"\n\n📋 **Tienes {count} alerta(s) pendiente(s) de RRHH:**\n"
             for r in reminders:
                 emoji = r.get('emoji', '🔵')
                 titulo = r.get('titulo', 'Sin título')
@@ -95,11 +96,104 @@ async def saludo(
             saludo_texto += recordatorios_texto
             recordatorios_info = {
                 "count": count,
-                "reminders": reminders
+                "reminders": reminders,
+                "type": "rrhh"
             }
         elif reminders_result.get("authorized") and reminders_result.get("count", 0) == 0:
-            saludo_texto += "\n\n✅ ¡Todo en orden! No tienes alertas pendientes."
-            recordatorios_info = {"count": 0, "reminders": []}
+            saludo_texto += "\n\n✅ ¡Todo en orden! No tienes alertas RRHH pendientes."
+            recordatorios_info = {"count": 0, "reminders": [], "type": "rrhh"}
+    except Exception as e:
+        # Si falla, solo mostrar saludo básico
+        pass
+
+    # Verificar recordatorios de clientes para todos los usuarios
+    try:
+        orch = http_req.app.state.orch
+        customer_reminders_result = orch.get_customer_reminders(user_id)
+
+        if customer_reminders_result.get("authorized") and customer_reminders_result.get("count", 0) > 0:
+            # Construir mensaje de recordatorios de clientes
+            count = customer_reminders_result["count"]
+            reminders = customer_reminders_result["reminders"]
+
+            recordatorios_clientes_texto = f"\n\n📞 **Tienes {count} recordatorio(s) de cliente(s):**\n"
+            for r in reminders:
+                emoji = r.get('emoji', '📱')
+                titulo = r.get('titulo', 'Sin título')
+                fecha = r.get('fecha_vencimiento', '')
+                accion = r.get('accion', '')
+
+                if fecha and fecha != 'None' and fecha != '':
+                    recordatorios_clientes_texto += f"\n{emoji} **{titulo}** - {fecha}"
+                else:
+                    recordatorios_clientes_texto += f"\n{emoji} **{titulo}**"
+
+                # Mostrar sugerencia de acción si existe
+                if accion:
+                    recordatorios_clientes_texto += f"\n   _→ {accion}_"
+
+            saludo_texto += recordatorios_clientes_texto
+
+            # Guardar ambos tipos de recordatorios en la respuesta
+            if recordatorios_info:
+                recordatorios_info["customer_reminders"] = {
+                    "count": count,
+                    "reminders": reminders,
+                    "type": "customer"
+                }
+            else:
+                recordatorios_info = {
+                    "count": count,
+                    "reminders": reminders,
+                    "type": "customer"
+                }
+        elif customer_reminders_result.get("authorized") and customer_reminders_result.get("count", 0) == 0:
+            pass  # No mostrar si no hay recordatorios
+    except Exception as e:
+        # Si falla, solo mostrar saludo básico
+        pass
+
+    # Verificar recordatorios de Operations para usuarios con ese rol
+    try:
+        orch = http_req.app.state.orch
+        operations_reminders_result = orch.get_operations_reminders(user_id, user_roles)
+
+        if operations_reminders_result.get("authorized") and operations_reminders_result.get("count", 0) > 0:
+            # Construir mensaje de recordatorios de Operations/Citas
+            count = operations_reminders_result["count"]
+            reminders = operations_reminders_result["reminders"]
+
+            recordatorios_operations_texto = f"\n\n📅 **Tienes {count} cita(s) pendiente(s):**\n"
+            for r in reminders:
+                emoji = r.get('emoji', '📅')
+                titulo = r.get('titulo', 'Sin título')
+                fecha = r.get('fecha_vencimiento', '')
+                accion = r.get('accion', '')
+
+                if fecha and fecha != 'None' and fecha != '':
+                    recordatorios_operations_texto += f"\n{emoji} **{titulo}** - {fecha}"
+                else:
+                    recordatorios_operations_texto += f"\n{emoji} **{titulo}**"
+
+                # Mostrar sugerencia de acción si existe
+                if accion:
+                    recordatorios_operations_texto += f"\n   _→ {accion}_"
+
+            saludo_texto += recordatorios_operations_texto
+
+            # Guardar recordatorios de operations en la respuesta
+            if recordatorios_info:
+                recordatorios_info["operations_reminders"] = {
+                    "count": count,
+                    "reminders": reminders,
+                    "type": "operations"
+                }
+            else:
+                recordatorios_info = {
+                    "count": count,
+                    "reminders": reminders,
+                    "type": "operations"
+                }
     except Exception as e:
         # Si falla, solo mostrar saludo básico
         pass

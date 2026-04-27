@@ -14,7 +14,10 @@ from app.services.tools.Router.General.general_query_engine import GeneralQueryE
 from app.services.tools.Router.General.tavilyService import TavilyBienesQueryEngine
 from app.services.tools.Router.General.property_question_engine import PropertyQuestionEngine
 from app.services.tools.Router.General.rrhh_question_engine import RrhhQuestionEngine
+from app.services.tools.Router.General.operations_question_engine import OperationsQuestionEngine
 from app.services.tools.Router.General.posts_question_engine import PostsQuestionEngine
+from app.services.tools.Router.General.pending_reminders_question_engine import PendingRemindersQuestionEngine
+from app.services.tools.Router.General.customer_reminders_question_engine import CustomerRemindersQuestionEngine
 from app.services.tools.Router.General.posts_generation_engine import PostsGenerationEngine
 from app.services.tools.Router.General.query_preprocessor import QueryPreprocessor, QueryType
 from app.services.conversation_context import ConversationContext
@@ -227,9 +230,11 @@ class LlamaRouter:
                 metadata=ToolMetadata(
                     name="rrhh_info",
                     description=(
-                        "👥 INFORMACIÓN DE RECURSOS HUMANOS (CONTROL DE ACCESO)\n\n"
+                        "👥 INFORMACIÓN DE RECURSOS HUMANOS Y STAFF\n\n"
                         "USAR CUANDO el usuario pregunta sobre:\n"
-                        "- Expedientes de empleados\n"
+                        "- Empleados, asesores, agentes, staff\n"
+                        "- Expedientes de empleados o asesores\n"
+                        "- Lista de empleados o asesores certificados\n"
                         "- Vacaciones, permisos y licencias\n"
                         "- Solicitudes de crédito/préstamo\n"
                         "- Pautas y políticas internas\n"
@@ -317,6 +322,107 @@ class LlamaRouter:
             logger.error(f"✗ Error configurando posts_generation: {e}")
             raise
 
+        # -------- Pending Reminders Engine (Recordatorios/tareas pendientes del usuario) --------
+        try:
+            reminders_engine = PendingRemindersQuestionEngine(sql_database=self.db2_sql_db)
+            reminders_tool = QueryEngineTool(
+                query_engine=reminders_engine,
+                metadata=ToolMetadata(
+                    name="pending_reminders",
+                    description=(
+                        "📊 MI DASHBOARD - TODO LO QUE TENGO EN EASYCORE\n\n"
+                        "USAR CUANDO el usuario pregunta sobre:\n"
+                        "- Sus datos e información personal\n"
+                        "- Clientes asignados\n"
+                        "- Propiedades y activos\n"
+                        "- Operaciones y proyectos\n"
+                        "- Campañas creadas\n"
+                        "- Solicitudes de crédito\n"
+                        "- Vacaciones/permisos pendientes\n"
+                        "- Ofertas, colaboraciones, controles financieros\n\n"
+                        "EJEMPLOS:\n"
+                        "✅ '¿Cuáles son mis datos?'\n"
+                        "✅ '¿Qué tengo asignado?'\n"
+                        "✅ '¿Cuántos clientes tengo?'\n"
+                        "✅ 'Mi dashboard'\n"
+                        "✅ '¿Cuáles son mis propiedades?'\n"
+                        "✅ 'Resumen de mis actividades'\n\n"
+                        "ACCESO: Abierto para TODOS los usuarios autenticados.\n"
+                        "NOTA: Cada usuario solo ve sus propios datos y asignaciones."
+                    ),
+                ),
+            )
+            self.reminders_engine = reminders_engine
+            self.reminders_tool = reminders_tool
+            logger.info("✓ Tool 'pending_reminders' configurado correctamente")
+        except Exception as e:
+            logger.error(f"✗ Error configurando pending_reminders: {e}")
+            raise
+
+        # -------- Customer Reminders Engine (Recordatorios de clientes) --------
+        try:
+            customer_reminders_engine = CustomerRemindersQuestionEngine(sql_database=self.db2_sql_db)
+            customer_reminders_tool = QueryEngineTool(
+                query_engine=customer_reminders_engine,
+                metadata=ToolMetadata(
+                    name="customer_reminders",
+                    description=(
+                        "📞 RECORDATORIOS DE CLIENTES\n\n"
+                        "USAR CUANDO el usuario pregunta sobre:\n"
+                        "- Citas pendientes de agendar con clientes\n"
+                        "- Seguimientos pendientes\n"
+                        "- Clientes sin actividad\n"
+                        "- Recordatorios de contacto\n"
+                        "- Próximas citas con clientes\n\n"
+                        "EJEMPLOS:\n"
+                        "✅ '¿Cuáles son mis recordatorios de clientes?'\n"
+                        "✅ '¿Clientes sin cita agendada?'\n"
+                        "✅ '¿Qué clientes necesitan seguimiento?'\n"
+                        "✅ 'Recordatorios pendientes'\n"
+                        "✅ '¿Próximas citas?'\n\n"
+                        "ACCESO: Abierto para TODOS los usuarios.\n"
+                        "NOTA: Cada usuario ve solo sus clientes y recordatorios."
+                    ),
+                ),
+            )
+            self.customer_reminders_engine = customer_reminders_engine
+            self.customer_reminders_tool = customer_reminders_tool
+            logger.info("✓ Tool 'customer_reminders' configurado correctamente")
+        except Exception as e:
+            logger.error(f"✗ Error configurando customer_reminders: {e}")
+            raise
+
+        # -------- Operations Question Engine (Citas y recordatorios de operaciones) --------
+        try:
+            operations_engine = OperationsQuestionEngine(sql_database=self.db2_sql_db)
+            operations_tool = QueryEngineTool(
+                query_engine=operations_engine,
+                metadata=ToolMetadata(
+                    name="operations_appointments",
+                    description=(
+                        "📅 CITAS Y RECORDATORIOS DE OPERACIONES\n\n"
+                        "USAR CUANDO el usuario pregunta sobre:\n"
+                        "- Citas pendientes con clientes\n"
+                        "- Citas agendadas con clientes específicos\n"
+                        "- Recordatorios de citas\n"
+                        "- Próximas reuniones\n\n"
+                        "EJEMPLOS:\n"
+                        "✅ '¿Tengo citas pendientes?'\n"
+                        "✅ '¿Citas con Juan López?'\n"
+                        "✅ '¿Qué citas tengo agendadas?'\n"
+                        "✅ 'Mis citas próximas'\n\n"
+                        "ACCESO: Solo usuarios con rol 'operations' o 'super_admin'.\n"
+                        "NOTA: Cada usuario solo ve sus propias citas."
+                    ),
+                ),
+            )
+            self.operations_engine = operations_engine
+            self.operations_tool = operations_tool
+            logger.info("✓ Tool 'operations_appointments' configurado correctamente")
+        except Exception as e:
+            logger.error(f"✗ Error configurando operations_appointments: {e}")
+            raise
+
         try:
             tavily = TavilyBienesQueryEngine(
                 api_key=settings.tavily_api_key,
@@ -367,7 +473,7 @@ class LlamaRouter:
             raise
 
         # -------- Router --------
-        self.base_tools = [sql_db1_tool, banks_tool, rrhh_tool, posts_tool, posts_gen_tool, general_tool, property_info_tool, internet_tool, internet_search_tool]
+        self.base_tools = [sql_db1_tool, banks_tool, rrhh_tool, operations_tool, posts_tool, posts_gen_tool, reminders_tool, customer_reminders_tool, general_tool, property_info_tool, internet_tool, internet_search_tool]
         self.default_tools = [*self.base_tools, sql_db2_tool]
         self.router = RouterQueryEngine(
             selector=PydanticSingleSelector.from_defaults(),
@@ -379,7 +485,7 @@ class LlamaRouter:
         return (
             "💼 BASE DE DATOS INTERNA EASYCORE - OPERACIONES DE NEGOCIO\n\n"
             "USAR CUANDO el usuario pregunta sobre:\n"
-            "- Usuarios, clientes, empleados, contactos\n"
+            "- Usuarios, clientes, contactos\n"
             "- Ventas, transacciones, facturas, pagos\n"
             "- Inventario, productos, stock\n"
             "- Reportes operativos internos\n"
@@ -391,6 +497,7 @@ class LlamaRouter:
             "✅ 'usuarios registrados esta semana'\n"
             "✅ 'inventario de producto X'\n\n"
             "NO USAR para propiedades o bienes raíces.\n"
+            "NO USAR para empleados, asesores o agentes (usa rrhh_info).\n"
             "IMPORTANTE: Para nombres de personas, usa LIKE parcial, no igualdad exacta.\n"
             f"TABLAS PERMITIDAS PARA ESTE ROL: {', '.join(allowed_tables) if allowed_tables else 'ninguna'}"
         )
@@ -424,7 +531,7 @@ class LlamaRouter:
         return [*self.base_tools, scoped_easycore_tool]
 
     # -------- Main API --------
-    def query(self, user_query: str, session_id: str = None, user_roles: list[str] | None = None):
+    def query(self, user_query: str, session_id: str = None, user_roles: list[str] | None = None, user_id: int = None):
         """
         Ejecuta query con pre-procesamiento inteligente.
 
@@ -444,6 +551,11 @@ class LlamaRouter:
             # Establecer user_roles en engines especializados
             self.rrhh_engine.set_user_roles(user_roles)
             self.posts_engine.set_user_roles(user_roles)
+            self.operations_engine.set_user_roles(user_roles)
+            if user_id:
+                self.reminders_engine.set_user_id(user_id)
+                self.customer_reminders_engine.set_user_id(user_id)
+                self.operations_engine.set_user_id(user_id)
 
             # 2️⃣ Si detectó ID de propiedad, ENRUTA DIRECTO a property_info
             if query_type == QueryType.PROPERTY_ID:

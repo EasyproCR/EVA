@@ -24,7 +24,8 @@ class RrhhDataService:
     EMPLOYEES_KEYWORDS = {
         'expediente', 'expedientes', 'empleado', 'empleados', 'perfil', 'perfiles',
         'contrato', 'contratos', 'puesto', 'puestos', 'salario', 'datos empleado',
-        'información empleado', 'ficha empleado', 'staff', 'personal'
+        'información empleado', 'ficha empleado', 'staff', 'personal',
+        'asesor', 'asesores', 'agente', 'agentes', 'certificado', 'certificados'
     }
 
     LEAVES_KEYWORDS = {
@@ -210,11 +211,27 @@ class RrhhDataService:
                 estado_titulo = "ACTIVOS"
                 logger.info(f"  ✓ Buscando empleados ACTIVOS")
 
+            # Detectar si busca certificados
+            busca_certificados = any(word in query_lower for word in ['certificado', 'certificados', 'ccc', 'certificada', 'certificadas'])
+            if busca_certificados:
+                cert_filter = " AND (LOWER(job_position) LIKE '%certificado%' OR LOWER(profession) LIKE '%certificado%' OR LOWER(contract) LIKE '%certificado%' OR LOWER(job_position) LIKE '%ccc%' OR LOWER(profession) LIKE '%ccc%')"
+                estado_titulo += " CERTIFICADOS"
+                logger.info(f"  ✓ Aplicando filtro de CERTIFICADOS")
+            else:
+                cert_filter = ""
+
+            # Extraer posible nombre de búsqueda primero
+            search_name = self._extract_search_term(query, ["expediente", "empleado", "datos", "asesor", "asesores", "agente"])
+            
             # Detectar lista de todos
-            ver_todos = any(kw in query_lower for kw in ['todos', 'lista', 'listado', 'hay', 'cuantos', 'cuántos'])
+            ver_todos = any(kw in query_lower for kw in ['todos', 'lista', 'listado', 'hay', 'cuantos', 'cuántos', 'certificados', 'asesores', 'asesor', 'agentes', 'agente'])
+            
+            # Si hay un nombre específico, no listar todos
+            if search_name and len(search_name) > 2:
+                ver_todos = False
 
             if ver_todos:
-                sql = f"SELECT id, name, email, job_position, phone_number FROM employees WHERE {status_filter} ORDER BY name LIMIT 50"
+                sql = f"SELECT id, name, email, job_position, phone_number FROM employees WHERE {status_filter}{cert_filter} ORDER BY name LIMIT 50"
                 results = self._execute_query(sql)
 
                 if not results:
@@ -236,7 +253,6 @@ class RrhhDataService:
                 return response
 
             # Búsqueda específica
-            search_name = self._extract_search_term(query, ["expediente", "empleado", "datos"])
             if search_name:
                 logger.info(f"  🔍 Buscando empleado: '{search_name}' ({estado_titulo})")
 
@@ -246,7 +262,7 @@ class RrhhDataService:
                        national_id, address, birthday, marital_status, contract
                 FROM employees
                 WHERE UPPER(name) LIKE UPPER('%{search_name}%')
-                AND {status_filter}
+                AND {status_filter}{cert_filter}
                 ORDER BY name
                 LIMIT 1
                 """
@@ -261,7 +277,7 @@ class RrhhDataService:
                     SELECT id, name, email, phone_number, job_position, profession,
                            national_id, address, birthday, marital_status, contract
                     FROM employees
-                    WHERE {status_filter}
+                    WHERE {status_filter}{cert_filter}
                     LIMIT 100
                     """
                     all_employees = self._execute_query(sql_all)
@@ -283,7 +299,7 @@ class RrhhDataService:
                         else:
                             # Como último recurso, listar solo empleados del tipo buscado
                             logger.warning(f"  ❌ No encontrado (fuzzy): {search_name}")
-                            all_employees_sql = f"SELECT id, name FROM employees WHERE {status_filter} ORDER BY name LIMIT 30"
+                            all_employees_sql = f"SELECT id, name FROM employees WHERE {status_filter}{cert_filter} ORDER BY name LIMIT 30"
                             all_emps = self._execute_query(all_employees_sql)
                             emp_list = '\n'.join([f"  • {getattr(e, 'name', 'N/A') if isinstance(e, object) else e.get('name', 'N/A')}" for e in (all_emps or [])])
                             return (
@@ -324,6 +340,9 @@ class RrhhDataService:
         except Exception as e:
             logger.error(f"❌ Error en empleados: {str(e)[:150]}")
             return f"⚠️ Error: {str(e)[:80]}"
+
+            # Detectar lista de todos
+            ver_todos = any(kw in query_lower for kw in ['todos', 'lista', 'listado', 'hay', 'cuantos', 'cuántos'])
 
             if ver_todos:
                 sql = "SELECT id, name, email, job_position, phone_number FROM employees WHERE contract_status = 1 ORDER BY name LIMIT 50"

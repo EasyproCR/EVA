@@ -32,6 +32,7 @@ class RrhhQuestionEngine(BaseQueryEngine):
         'expediente', 'expedientes', 'empleado', 'empleados', 'perfil', 'perfiles',
         'contrato', 'contratos', 'puesto', 'puestos', 'salario', 'salary',
         'datos empleado', 'información empleado', 'ficha empleado',
+        'asesor', 'asesores', 'agente', 'agentes', 'certificado', 'certificados',
 
         # Vacaciones/permisos
         'vacacion', 'vacaciones', 'permiso', 'permisos', 'licencia', 'licencias',
