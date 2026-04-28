@@ -211,20 +211,26 @@ class RrhhDataService:
                 estado_titulo = "ACTIVOS"
                 logger.info(f"  ✓ Buscando empleados ACTIVOS")
 
-            # Detectar si busca certificados
-            busca_certificados = any(word in query_lower for word in ['certificado', 'certificados', 'ccc', 'certificada', 'certificadas'])
+            # Detectar si busca certificados/verificados
+            busca_certificados = any(word in query_lower for word in ['certificado', 'certificados', 'ccc', 'certificada', 'certificadas', 'verificado', 'verificados', 'verificada', 'verificadas'])
             if busca_certificados:
-                cert_filter = " AND (LOWER(job_position) LIKE '%certificado%' OR LOWER(profession) LIKE '%certificado%' OR LOWER(contract) LIKE '%certificado%' OR LOWER(job_position) LIKE '%ccc%' OR LOWER(profession) LIKE '%ccc%')"
-                estado_titulo += " CERTIFICADOS"
-                logger.info(f"  ✓ Aplicando filtro de CERTIFICADOS")
+                cert_filter = " AND (LOWER(job_position) LIKE '%certificado%' OR LOWER(profession) LIKE '%certificado%' OR LOWER(contract) LIKE '%certificado%' OR LOWER(job_position) LIKE '%ccc%' OR LOWER(profession) LIKE '%ccc%' OR LOWER(job_position) LIKE '%verificado%' OR LOWER(profession) LIKE '%verificado%' OR LOWER(contract) LIKE '%verificado%')"
+                estado_titulo += " VERIFICADOS/CERTIFICADOS"
+                logger.info(f"  ✓ Aplicando filtro de CERTIFICADOS/VERIFICADOS")
             else:
                 cert_filter = ""
 
             # Extraer posible nombre de búsqueda primero
-            search_name = self._extract_search_term(query, ["expediente", "empleado", "datos", "asesor", "asesores", "agente"])
+            search_name = self._extract_search_term(query, ["expediente", "empleado", "empleados", "datos", "asesor", "asesores", "agente", "agentes"])
+            
+            if search_name:
+                ignored_names = {'verificado', 'verificados', 'certificado', 'certificados', 'verificada', 'verificadas', 'certificada', 'certificadas', 'activo', 'activos', 'inactivo', 'inactivos', 'todos', 'lista', 'hay', 'cuantos', 'cuántos', 'empleados', 'empleado', 'asesores', 'asesor', 'agentes', 'agente', 'quienes', 'quiénes'}
+                search_words = search_name.lower().split()
+                filtered_words = [w for w in search_words if w not in ignored_names]
+                search_name = " ".join(filtered_words) if filtered_words else None
             
             # Detectar lista de todos
-            ver_todos = any(kw in query_lower for kw in ['todos', 'lista', 'listado', 'hay', 'cuantos', 'cuántos', 'certificados', 'asesores', 'asesor', 'agentes', 'agente'])
+            ver_todos = any(kw in query_lower for kw in ['todos', 'lista', 'listado', 'hay', 'cuantos', 'cuántos', 'certificados', 'certificado', 'verificados', 'verificado', 'asesores', 'asesor', 'agentes', 'agente', 'empleados', 'empleado', 'quienes', 'quiénes'])
             
             # Si hay un nombre específico, no listar todos
             if search_name and len(search_name) > 2:
