@@ -40,7 +40,7 @@ class RrhhQuestionEngine(BaseQueryEngine):
 
         # Créditos/préstamos
         'crédito', 'credito', 'préstamo', 'prestamo', 'adelanto', 'loan', 'credit',
-        'solicitud de crédito', 'solicitud de préstamo',
+        'solicitud de crédito', 'solicitud de préstamo', 'credid', 'credids',
 
         # Pautas/políticas
         'pauta', 'pautas', 'política', 'politica', 'políticas', 'guideline',

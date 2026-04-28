@@ -516,56 +516,70 @@ class RrhhDataService:
             # Detectar si hay filtro de estado específico
             state_filter = self._detect_state_filter(query)
 
-            # Por defecto mostrar PENDIENTES (créditos activos)
-            if not state_filter:
-                state_filter = 'pending'
+            # Si no hay filtro, mostrar todos
+            display_state = state_filter.upper() if state_filter else 'REGISTRADOS'
 
-            logger.info(f"  📊 Estado a mostrar: {state_filter}")
+            logger.info(f"  📊 Estado a mostrar: {display_state}")
 
-            # BUSCAR EN credit_study_requests CON FILTRO DE ESTADO
-            sql_credit_study = f"SELECT id, property, request_status, request_reason FROM credit_study_requests WHERE request_status = '{state_filter}' LIMIT 50"
+            # BUSCAR EN credit_study_requests
+            if state_filter:
+                sql_credit_study = f"SELECT * FROM credit_study_requests WHERE request_status = '{state_filter}' LIMIT 50"
+            else:
+                sql_credit_study = "SELECT * FROM credit_study_requests LIMIT 50"
+                
             logger.info(f"  📝 SQL: {sql_credit_study}")
             results_credit_study = self._execute_query(sql_credit_study)
             count_study = len(results_credit_study) if results_credit_study else 0
             logger.info(f"  ✓ Resultados encontrados: {count_study}")
 
             # BUSCAR EN campo credid de employees (SIN FILTRO, siempre mostrar)
-            sql_credid = "SELECT id, name, credid FROM employees WHERE credid IS NOT NULL AND credid != '' LIMIT 50"
+            sql_credid = "SELECT * FROM employees WHERE credid IS NOT NULL AND credid != '' LIMIT 50"
             results_credid = self._execute_query(sql_credid)
             count_credid = len(results_credid) if results_credid else 0
 
             # Si no hay nada
             if count_study == 0 and count_credid == 0:
-                return f"ℹ️ No hay créditos {state_filter.upper()}."
+                return f"ℹ️ No hay créditos {display_state.lower()}."
 
             # Construir respuesta
-            response = f"💰 **Créditos {state_filter.upper()}** (Total: {count_study + count_credid})\n\n"
+            response = f"💰 **Créditos {display_state}** (Total: {count_study + count_credid})\n\n"
 
             # Mostrar credit_study_requests
             if count_study > 0:
                 response += f"**📋 Solicitudes de Estudio** ({count_study})\n"
                 for loan in results_credit_study:
                     try:
-                        id_num = getattr(loan, 'id', '?')
-                        propiedad = getattr(loan, 'property', 'Sin especificar')
-                        razon = getattr(loan, 'request_reason', 'Sin especificar')
+                        id_num = loan.get('id', '?')
+                        # Intentar obtener información de la propiedad y razón, si existen
+                        propiedad = loan.get('property', loan.get('property_id', loan.get('property_name', 'Sin especificar')))
+                        razon = loan.get('request_reason', loan.get('reason', loan.get('description', 'Sin especificar')))
 
                         response += f"⏳ Solicitud #{id_num}\n"
-                        response += f"   🏠 Propiedad: {propiedad}\n"
-                        response += f"   📝 Motivo: {razon}\n"
+                        if propiedad != 'Sin especificar' or 'property' in loan or 'property_id' in loan:
+                            response += f"   🏠 Propiedad: {propiedad}\n"
+                        if razon != 'Sin especificar' or 'request_reason' in loan or 'reason' in loan:
+                            response += f"   📝 Motivo: {razon}\n"
+                        
+                        # Extra fallback: si no encontramos ni propiedad ni razón, mostrar lo que podamos
+                        if propiedad == 'Sin especificar' and razon == 'Sin especificar':
+                            estado = loan.get('request_status', state_filter)
+                            monto = loan.get('amount', loan.get('monto', 'N/A'))
+                            if monto != 'N/A':
+                                response += f"   💵 Monto: {monto}\n"
+                            response += f"   📌 Estado: {estado}\n"
                     except Exception as e:
                         logger.error(f"Error procesando loan: {str(e)}")
                         continue
                 response += "\n"
 
-            # Mostrar créditos CREDID de empleados
+            # Mostrar créditos CREDID de employees
             if count_credid > 0:
                 response += f"**💳 Créditos en Nómina** ({count_credid})\n"
                 for emp in results_credid:
                     try:
-                        emp_id = getattr(emp, 'id', '?')
-                        emp_name = getattr(emp, 'name', 'Desconocido')
-                        credid_data = str(getattr(emp, 'credid', 'Sin detalles'))
+                        emp_id = emp.get('id', '?')
+                        emp_name = emp.get('name', 'Desconocido')
+                        credid_data = str(emp.get('credid', 'Sin detalles'))
 
                         if len(credid_data) > 80:
                             credid_data = credid_data[:80] + "..."
