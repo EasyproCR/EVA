@@ -327,7 +327,10 @@ class LlamaRouter:
 
         # -------- Quotes Generation Engine (Generar cotizaciones financieras) --------
         try:
-            quotes_gen_engine = QuotesGenerationEngine(sql_database=self.db2_sql_db)
+            quotes_gen_engine = QuotesGenerationEngine(
+                property_db_service=self.property_db_service,
+                sql_database=bienes_db
+            )
             quotes_gen_tool = QueryEngineTool(
                 query_engine=quotes_gen_engine,
                 metadata=ToolMetadata(
@@ -631,6 +634,16 @@ class LlamaRouter:
                     self.property_question_engine.session_id = session_id
                 response = self.property_question_engine._query(query_bundle)
                 logger.info(f"🔧 Tool seleccionado: property_info (directo por ID)")
+                logger.info(f"📤 Respuesta generada (primeros 200 chars): {str(response)[:200]}...")
+                return response
+                
+            # 2.5️⃣ Si detectó ID pero ES COTIZACIÓN, ENRUTA DIRECTO a quotes_generation
+            if query_type == QueryType.QUOTE_GENERATION:
+                logger.info(f"🎯 ENRUTAMIENTO DIRECTO: Cotización para ID #{property_id}")
+                from llama_index.core.schema import QueryBundle
+                query_bundle = QueryBundle(query_str=user_query)
+                response = self.quotes_gen_engine._query(query_bundle)
+                logger.info(f"🔧 Tool seleccionado: quotes_generation (directo por ID)")
                 logger.info(f"📤 Respuesta generada (primeros 200 chars): {str(response)[:200]}...")
                 return response
 

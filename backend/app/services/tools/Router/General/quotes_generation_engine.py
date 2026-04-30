@@ -21,9 +21,10 @@ class QuotesGenerationEngine(BaseQueryEngine):
     Realiza cálculos de cuota matemática y utiliza el LLM para redactar un documento formal.
     """
 
-    def __init__(self, sql_database=None):
+    def __init__(self, property_db_service=None, sql_database=None):
         super().__init__(callback_manager=CallbackManager([]))
         self.sql_database = sql_database
+        self.property_db_service = property_db_service
         self.user_roles = []  # Se asigna desde el router
         logger.info("✓ QuotesGenerationEngine inicializado")
 
@@ -91,22 +92,25 @@ class QuotesGenerationEngine(BaseQueryEngine):
 
     def _get_property_data(self, property_id: int) -> Optional[Dict]:
         """Obtiene datos básicos de la propiedad desde la BD."""
-        if not self.sql_database:
+        if not hasattr(self, 'property_db_service') or not self.property_db_service:
+            logger.error("No se inyectó property_db_service en QuotesGenerationEngine")
             return None
         try:
-            connection = self.sql_database._engine.connect()
-            sql = """
-            SELECT
-                id, name, price, location, property_type, bank_name
-            FROM properties
-            WHERE id = :property_id
-            LIMIT 1
-            """
-            result = connection.execute(text(sql), {'property_id': property_id})
-            row = result.fetchone()
-            connection.close()
-            if row:
-                return dict(row._mapping)
+            property_data = self.property_db_service.get_property_by_id(property_id)
+            if property_data:
+                # Map keys to match the previous structure expected by _calculate_mortgage and the prompt
+                price = property_data.get('precio_usd')
+                if not price or float(price) <= 0:
+                    price = property_data.get('precio_local')
+
+                return {
+                    'id': property_data.get('id'),
+                    'name': property_data.get('nombre'),
+                    'price': price,
+                    'location': f"{property_data.get('provincia', '')}, {property_data.get('canton', '')}",
+                    'property_type': property_data.get('tipo_propiedad'),
+                    'bank_name': property_data.get('nombre_banco')
+                }
             return None
         except Exception as e:
             logger.error(f"Error obteniendo propiedad {property_id}: {e}")

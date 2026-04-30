@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 class QueryType(Enum):
     """Tipos de consulta detectables"""
     PROPERTY_ID = "property_id"  # Consulta con ID de propiedad específico
+    QUOTE_GENERATION = "quote_generation" # Consulta de cotizacion
     GENERAL = "general"           # Consulta general (usa router)
 
 
@@ -47,15 +48,14 @@ class QueryPreprocessor:
         if property_id is not None:
             logger.info(f"  🔍 PreProcessor: Detectado ID de propiedad: {property_id}")
 
-            # Validar que sea una consulta sobre la propiedad específica
+            # 1. Verificar si es una solicitud de cotización (tiene prioridad absoluta sobre todo)
+            if any(kw in query_lower for kw in ['cotiza', 'cotización', 'cotizacion', 'cuota', 'prima', 'financiamiento']):
+                logger.info(f"  ✓ Es una solicitud de cotización → EnrutandoDirecto a quotes_generation")
+                return QueryType.QUOTE_GENERATION, property_id
+
+            # 2. Validar que sea una consulta sobre la propiedad específica
             # (no solo que mencione un ID aislado)
             if self._is_property_question(query_lower):
-                # PERO: Si es una solicitud de cotización, no la interceptes. 
-                # Deja que el router LLM la envíe al QuotesGenerationEngine
-                if any(kw in query_lower for kw in ['cotiza', 'cotización', 'cotizacion', 'cuota', 'prima', 'financiamiento']):
-                    logger.info(f"  ✓ Es una solicitud de cotización → Dejando que el router LLM la procese")
-                    return QueryType.GENERAL, None
-                
                 logger.info(f"  ✓ Consulta sobre propiedad → EnrutandoDirecto a property_info")
                 return QueryType.PROPERTY_ID, property_id
 
