@@ -19,6 +19,7 @@ from app.services.tools.Router.General.posts_question_engine import PostsQuestio
 from app.services.tools.Router.General.pending_reminders_question_engine import PendingRemindersQuestionEngine
 from app.services.tools.Router.General.customer_reminders_question_engine import CustomerRemindersQuestionEngine
 from app.services.tools.Router.General.posts_generation_engine import PostsGenerationEngine
+from app.services.tools.Router.General.quotes_generation_engine import QuotesGenerationEngine
 from app.services.tools.Router.General.query_preprocessor import QueryPreprocessor, QueryType
 from app.services.conversation_context import ConversationContext
 from app.data import easycoreContext
@@ -323,6 +324,37 @@ class LlamaRouter:
             logger.error(f"✗ Error configurando posts_generation: {e}")
             raise
 
+        # -------- Quotes Generation Engine (Generar cotizaciones financieras) --------
+        try:
+            quotes_gen_engine = QuotesGenerationEngine(sql_database=self.db2_sql_db)
+            quotes_gen_tool = QueryEngineTool(
+                query_engine=quotes_gen_engine,
+                metadata=ToolMetadata(
+                    name="quotes_generation",
+                    description=(
+                        "💰 GENERACIÓN DE COTIZACIONES FINANCIERAS DE PROPIEDADES\n\n"
+                        "USAR CUANDO el usuario pide:\n"
+                        "- Cotizar una propiedad o inmueble\n"
+                        "- Hacer una cotización, cálculo de cuota o financiamiento\n"
+                        "- Ver cómo quedaría el pago mensual o la prima\n"
+                        "- Solicitar opciones de financiamiento para una propiedad\n\n"
+                        "EJEMPLOS:\n"
+                        "✅ 'Cotiza la propiedad 150'\n"
+                        "✅ 'Hazme una cotización para el ID 432'\n"
+                        "✅ 'Cotizar la casa 800 con 15% de prima a 25 años'\n"
+                        "✅ 'Quiero ver cómo queda la cuota de la propiedad 90'\n\n"
+                        "ACCESO: Abierto para TODOS los usuarios.\n"
+                        "NOTA: Esta herramienta hace los cálculos matemáticos reales de cuotas y redacta un documento formal."
+                    ),
+                ),
+            )
+            self.quotes_gen_engine = quotes_gen_engine
+            self.quotes_gen_tool = quotes_gen_tool
+            logger.info("✓ Tool 'quotes_generation' configurado correctamente")
+        except Exception as e:
+            logger.error(f"✗ Error configurando quotes_generation: {e}")
+            raise
+
         # -------- Pending Reminders Engine (Recordatorios/tareas pendientes del usuario) --------
         try:
             reminders_engine = PendingRemindersQuestionEngine(sql_database=self.db2_sql_db)
@@ -473,7 +505,7 @@ class LlamaRouter:
             raise
 
         # -------- Router --------
-        self.base_tools = [sql_db1_tool, banks_tool, rrhh_tool, operations_tool, posts_tool, posts_gen_tool, reminders_tool, customer_reminders_tool, general_tool, property_info_tool, internet_tool, internet_search_tool]
+        self.base_tools = [sql_db1_tool, banks_tool, rrhh_tool, operations_tool, posts_tool, posts_gen_tool, quotes_gen_tool, reminders_tool, customer_reminders_tool, general_tool, property_info_tool, internet_tool, internet_search_tool]
         self.default_tools = [*self.base_tools, sql_db2_tool]
         self.router = RouterQueryEngine(
             selector=PydanticSingleSelector.from_defaults(),
