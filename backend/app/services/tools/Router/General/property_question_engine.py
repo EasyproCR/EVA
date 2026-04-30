@@ -45,8 +45,16 @@ class PropertyQuestionEngine(BaseQueryEngine):
         """
         Responde preguntas sobre propiedades desde la BD.
         """
+        import re as _re
         query = query_bundle.query_str
+        query_lower = query.lower()
         logger.info(f"📋 Pregunta sobre propiedad: {query}")
+
+        # 🚨 DETECCIÓN ANTICIPADA: Si la consulta es de COTIZACIÓN, procesar aquí mismo
+        QUOTE_KEYWORDS = ['cotiza', 'cotización', 'cotizacion', 'cuota', 'prima', 'financiamiento', 'financiar', 'mensual']
+        if any(kw in query_lower for kw in QUOTE_KEYWORDS):
+            logger.info(f"💰 Detectada solicitud de cotización en PropertyQuestionEngine → procesando aquí")
+            return self._handle_quote_request(query)
 
         # Obtener datos de la propiedad
         property_data = None
@@ -351,9 +359,125 @@ class PropertyQuestionEngine(BaseQueryEngine):
 
         return "No pude encontrar esa información específica."
     
+    def _handle_quote_request(self, query: str) -> Response:
+        """
+        Procesa solicitudes de cotización financiera.
+        Extrae el ID, busca la propiedad, calcula prima/cuota y formatea el resultado.
+        """
+        import re
+        query_lower = query.lower()
+
+        # Extraer ID de propiedad
+        property_id = self._extract_property_id(query)
+        if not property_id:
+            return Response(response=(
+                "Para generar una cotización necesito el ID de la propiedad.\n\n"
+                "Ejemplo: *'Realiza una cotización para la propiedad ID: 150 con 20% prima a 25 años'*"
+            ))
+
+        # Buscar propiedad en BD
+        property_data = self.property_db_service.get_property_by_id(property_id)
+        if not property_data:
+            return Response(response=f"No encontré la propiedad con ID {property_id} en la base de datos.")
+
+        # Obtener precio (USD primero, local de respaldo)
+        price = property_data.get('precio_usd')
+        if not price or float(price) <= 0:
+            price = property_data.get('precio_local')
+        if not price or float(price) <= 0:
+            return Response(response=f"La propiedad {property_id} no tiene precio registrado para cotizar.")
+        price = float(price)
+
+        # Extraer parámetros financieros del query
+        prima_pct = 10.0
+        plazo_anios = 30
+        tasa_interes = 8.5
+
+        prima_m = re.search(r'(\d+(?:\.\d+)?)\s*%\s*(?:de\s*)?prima', query_lower)
+        if not prima_m:
+            prima_m = re.search(r'prima\s*(?:de\s*|del?\s*)?(\d+(?:\.\d+)?)', query_lower)
+        if prima_m:
+            prima_pct = float(prima_m.group(1))
+
+        plazo_m = re.search(r'(\d+)\s*a[ñn]os?', query_lower)
+        if plazo_m:
+            plazo_anios = int(plazo_m.group(1))
+
+        tasa_m = re.search(r'(\d+(?:\.\d+)?)\s*%\s*(?:de\s*)?(?:inter[ée]s|tasa)', query_lower)
+        if not tasa_m:
+            tasa_m = re.search(r'tasa\s*(?:de\s*|del?\s*)?(\d+(?:\.\d+)?)', query_lower)
+        if tasa_m:
+            tasa_interes = float(tasa_m.group(1))
+
+        # Calcular
+        prima_monto = price * (prima_pct / 100.0)
+        monto_prestamo = price - prima_monto
+        r_mensual = (tasa_interes / 100.0) / 12.0
+        n_meses = plazo_anios * 12
+        if r_mensual > 0:
+            cuota = monto_prestamo * (r_mensual * (1 + r_mensual)**n_meses) / ((1 + r_mensual)**n_meses - 1)
+        else:
+            cuota = monto_prestamo / n_meses if n_meses > 0 else 0
+        ingreso_min = cuota / 0.40
+
+        # Datos de la propiedad para el texto
+        nombre = property_data.get('nombre', f'Propiedad #{property_id}')
+        ubicacion_parts = [p for p in [property_data.get('distrito'), property_data.get('canton'), property_data.get('provincia')] if p]
+        ubicacion = ', '.join(ubicacion_parts) if ubicacion_parts else 'No especificada'
+        banco = property_data.get('nombre_banco', 'No especificado')
+        tipo = property_data.get('tipo_propiedad', 'Propiedad')
+
+        # Usar LLM para redactar cotización formal
+        prompt = (
+            "Eres un asesor inmobiliario profesional. Redacta una cotización formal y clara "
+            "basada ESTRICTAMENTE en estos datos calculados. NO modifiques los números.\n\n"
+            f"PROPIEDAD:\n"
+            f"- Nombre: {nombre}\n"
+            f"- Tipo: {tipo}\n"
+            f"- Ubicación: {ubicacion}\n"
+            f"- Entidad: {banco}\n\n"
+            f"CÁLCULO FINANCIERO:\n"
+            f"- Precio Total: {price:,.0f}\n"
+            f"- Prima ({prima_pct}%): {prima_monto:,.0f}\n"
+            f"- Monto a Financiar: {monto_prestamo:,.0f}\n"
+            f"- Plazo: {plazo_anios} años ({n_meses} meses)\n"
+            f"- Tasa de Interés Anual: {tasa_interes}%\n"
+            f"- CUOTA MENSUAL ESTIMADA: {cuota:,.0f}\n"
+            f"- Ingreso Mínimo Recomendado: {ingreso_min:,.0f}\n\n"
+            "Redacta una cotización con: saludo, datos del bien, condiciones financieras (todos los números), "
+            "nota de que son valores estimados, y un llamado a la acción.\n"
+            "Cotización:"
+        )
+
+        try:
+            from llama_index.core import Settings
+            response_text = Settings.llm.complete(prompt).text
+            return Response(response=response_text)
+        except Exception as e:
+            logger.error(f"LLM falló en cotización: {e}")
+            # Fallback texto plano sin emojis especiales
+            txt = (
+                f"COTIZACION ESTIMADA - Propiedad #{property_id}\n\n"
+                f"{nombre}\n"
+                f"Tipo: {tipo} | Ubicacion: {ubicacion}\n"
+                f"Entidad: {banco}\n\n"
+                f"--- CONDICIONES FINANCIERAS ---\n"
+                f"Precio Total:        {price:>15,.0f}\n"
+                f"Prima ({prima_pct}%):          {prima_monto:>15,.0f}\n"
+                f"Monto a Financiar:   {monto_prestamo:>15,.0f}\n"
+                f"Plazo:               {plazo_anios} años\n"
+                f"Tasa de Interes:     {tasa_interes}% anual\n"
+                f"CUOTA MENSUAL:       {cuota:>15,.0f}\n"
+                f"Ingreso Minimo Rec:  {ingreso_min:>15,.0f}\n\n"
+                f"*Valores estimados, sujetos a aprobacion crediticia y polizas bancarias.*\n"
+                f"Para iniciar el tramite, contactenos."
+            )
+            return Response(response=txt)
+
     async def _aquery(self, query_bundle: QueryBundle) -> Response:
         """Versión async."""
         return self._query(query_bundle)
+
     
     def _get_prompt_modules(self):
         """Requerido por BaseQueryEngine."""
