@@ -600,16 +600,34 @@ class LlamaRouter:
         """
         Ejecuta query con pre-procesamiento inteligente.
 
-        1. Pre-procesa la consulta para detectar patrones específicos (ej: IDs de propiedades)
+        0. Detección HARDCODED de cotizaciones (prioridad absoluta)
+        1. Pre-procesa la consulta para detectar patrones específicos
         2. Si detecta un patrón, enruta DIRECTAMENTE a la herramienta específica
         3. Si no detecta patrón, usa el router LLaMA normal
         """
+        import re as _re
         logger.info(f"\n{'='*60}")
         logger.info(f"📥 NUEVA CONSULTA: {user_query}")
         logger.info(f"👤 Roles usuario: {sorted(normalize_roles(user_roles or []))}")
         logger.info(f"{'='*60}")
 
         try:
+            # 0️⃣ DETECCIÓN HARDCODED: Cotización con ID (MÁXIMA PRIORIDAD - antes de todo)
+            _q_lower = user_query.lower()
+            _QUOTE_KW = ['cotiza', 'cuota', 'prima', 'financiamiento', 'financiar', 'amortiz', 'mensualidad']
+            _has_quote_kw = any(kw in _q_lower for kw in _QUOTE_KW)
+            _id_match = _re.search(r'\bid\s*[:=]?\s*(\d+)\b|\bpropiedad\s+(\d+)\b|#\s*(\d+)\b', _q_lower)
+            if _has_quote_kw and _id_match:
+                _pid = int(next(g for g in _id_match.groups() if g is not None))
+                logger.info(f"🚀 [HARDCODED] Cotización detectada para ID #{_pid} → quotes_gen_engine")
+                from llama_index.core.schema import QueryBundle
+                _qb = QueryBundle(query_str=user_query)
+                # Asignar roles ANTES de llamar al engine
+                self.quotes_gen_engine.set_user_roles(user_roles)
+                _resp = self.quotes_gen_engine._query(_qb)
+                logger.info(f"✅ [HARDCODED] Cotización generada: {str(_resp)[:150]}...")
+                return _resp
+
             # 1️⃣ PRE-PROCESAMIENTO: Detectar patrones específicos
             query_type, property_id = self.query_preprocessor.analyze(user_query)
 
