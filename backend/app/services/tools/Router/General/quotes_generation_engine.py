@@ -24,7 +24,22 @@ class QuotesGenerationEngine(BaseQueryEngine):
     def __init__(self, sql_database=None):
         super().__init__(callback_manager=CallbackManager([]))
         self.sql_database = sql_database
+        self.user_roles = []  # Se asigna desde el router
         logger.info("✓ QuotesGenerationEngine inicializado")
+
+    def set_user_roles(self, roles):
+        """Setter para asignar roles del usuario desde el router"""
+        self.user_roles = roles if roles else []
+        logger.info(f"  👤 Roles asignados a QuotesGenerationEngine: {self.user_roles}")
+
+    def _has_permission(self) -> bool:
+        """Verifica si el usuario tiene el rol requerido para generar cotizaciones."""
+        if not self.user_roles:
+            return False
+            
+        roles_permitidos = {'servicio_al_cliente', 'master', 'admin', 'super_admin'}
+        user_roles_set = {str(r).lower().strip() for r in self.user_roles}
+        return bool(roles_permitidos.intersection(user_roles_set))
 
     def _extract_property_id(self, query: str) -> Optional[int]:
         """Extrae el ID de la propiedad de la consulta."""
@@ -128,6 +143,14 @@ class QuotesGenerationEngine(BaseQueryEngine):
         query = query_bundle.query_str
         logger.info(f"📝 Quotes Generation Request: {query}")
 
+        # 1. Verificar Permisos
+        if not self._has_permission():
+            logger.warning(f"⚠️ Acceso denegado a Cotizaciones para roles: {self.user_roles}")
+            return Response(
+                response="🔒 **Acceso Denegado**\n\nSolo el departamento de **Servicio al Cliente** está autorizado para generar cotizaciones formales en línea. Por favor, contacta con Alejandra o un administrador si necesitas asistencia."
+            )
+
+        # 2. Extraer ID de propiedad
         property_id = self._extract_property_id(query)
         if not property_id:
             msg = (

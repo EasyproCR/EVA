@@ -343,7 +343,7 @@ class LlamaRouter:
                         "✅ 'Hazme una cotización para el ID 432'\n"
                         "✅ 'Cotizar la casa 800 con 15% de prima a 25 años'\n"
                         "✅ 'Quiero ver cómo queda la cuota de la propiedad 90'\n\n"
-                        "ACCESO: Abierto para TODOS los usuarios.\n"
+                        "ACCESO: Exclusivo para usuarios con rol 'servicio_al_cliente', 'master' o 'admin'.\n"
                         "NOTA: Esta herramienta hace los cálculos matemáticos reales de cuotas y redacta un documento formal."
                     ),
                 ),
@@ -584,6 +584,7 @@ class LlamaRouter:
             self.rrhh_engine.set_user_roles(user_roles)
             self.posts_engine.set_user_roles(user_roles)
             self.operations_engine.set_user_roles(user_roles)
+            self.quotes_gen_engine.set_user_roles(user_roles)
             if user_id:
                 self.reminders_engine.set_user_id(user_id)
                 self.customer_reminders_engine.set_user_id(user_id)
