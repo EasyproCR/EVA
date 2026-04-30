@@ -521,9 +521,12 @@ class RrhhDataService:
         try:
             # Detectar si hay filtro de estado específico
             state_filter = self._detect_state_filter(query)
+            
+            # Si no hay filtro explícito, por defecto mostrar 'pending' (activos)
+            if not state_filter and 'todos' not in query.lower() and 'historial' not in query.lower():
+                state_filter = 'pending'
 
-            # Si no hay filtro, mostrar todos
-            display_state = state_filter.upper() if state_filter else 'REGISTRADOS'
+            display_state = state_filter.upper() if state_filter else 'REGISTRADOS (TODOS)'
 
             logger.info(f"  📊 Estado a mostrar: {display_state}")
 
