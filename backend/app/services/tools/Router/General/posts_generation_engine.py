@@ -72,16 +72,18 @@ class PostsGenerationEngine(BaseQueryEngine):
         query_lower = query.lower()
         words = query_lower.split()
 
+        for keyword in self.GENERATION_KEYWORDS:
+            if f" {keyword} " in f" {query_lower} " or query_lower.startswith(f"{keyword} ") or query_lower.endswith(f" {keyword}") or query_lower == keyword:
+                return True
+
         best_score = 0.0
         for word in words:
+            if len(word) <= 3:
+                continue
             for keyword in self.GENERATION_KEYWORDS:
-                # Similitud exacta (rápido)
-                if keyword in word or word in keyword:
-                    return True
-
-                # Similitud difusa desde 50%
+                # Similitud difusa desde 65% para evitar falsos positivos
                 similarity = SequenceMatcher(None, word, keyword).ratio()
-                if similarity >= 0.50:
+                if similarity >= 0.65:
                     best_score = similarity
                     logger.info(f"  ◇ Fuzzy generation keyword ({best_score*100:.0f}%): '{word}' ≈ '{keyword}'")
                     return True
@@ -156,16 +158,19 @@ class PostsGenerationEngine(BaseQueryEngine):
         best_score = 0.0
 
         for platform, keywords in self.PLATFORM_KEYWORDS.items():
-            for word in words:
-                for keyword in keywords:
-                    # Similitud exacta (rápido)
-                    if keyword in word or word in keyword:
-                        logger.info(f"  ✓ Plataforma detectada: {platform}")
-                        return platform
+            for keyword in keywords:
+                if f" {keyword} " in f" {query_lower} " or query_lower.startswith(f"{keyword} ") or query_lower.endswith(f" {keyword}") or query_lower == keyword:
+                    logger.info(f"  ✓ Plataforma detectada exacta: {platform}")
+                    return platform
 
-                    # Similitud difusa desde 50%
+        for platform, keywords in self.PLATFORM_KEYWORDS.items():
+            for word in words:
+                if len(word) <= 3:
+                    continue
+                for keyword in keywords:
+                    # Similitud difusa desde 65%
                     similarity = SequenceMatcher(None, word, keyword).ratio()
-                    if similarity >= 0.50 and similarity > best_score:
+                    if similarity >= 0.65 and similarity > best_score:
                         best_score = similarity
                         best_platform = platform
                         logger.info(f"  ◇ Fuzzy platform ({best_score*100:.0f}%): '{word}' ≈ '{keyword}' → {platform}")
@@ -184,16 +189,19 @@ class PostsGenerationEngine(BaseQueryEngine):
         best_score = 0.0
 
         for content_type, keywords in self.CONTENT_TYPES.items():
-            for word in words:
-                for keyword in keywords:
-                    # Similitud exacta (rápido)
-                    if keyword in word or word in keyword:
-                        logger.info(f"  ✓ Tipo contenido detectado: {content_type}")
-                        return content_type
+            for keyword in keywords:
+                if f" {keyword} " in f" {query_lower} " or query_lower.startswith(f"{keyword} ") or query_lower.endswith(f" {keyword}") or query_lower == keyword:
+                    logger.info(f"  ✓ Tipo contenido detectado exacto: {content_type}")
+                    return content_type
 
-                    # Similitud difusa desde 50%
+        for content_type, keywords in self.CONTENT_TYPES.items():
+            for word in words:
+                if len(word) <= 3:
+                    continue
+                for keyword in keywords:
+                    # Similitud difusa desde 65%
                     similarity = SequenceMatcher(None, word, keyword).ratio()
-                    if similarity >= 0.50 and similarity > best_score:
+                    if similarity >= 0.65 and similarity > best_score:
                         best_score = similarity
                         best_content_type = content_type
                         logger.info(f"  ◇ Fuzzy content ({best_score*100:.0f}%): '{word}' ≈ '{keyword}' → {content_type}")

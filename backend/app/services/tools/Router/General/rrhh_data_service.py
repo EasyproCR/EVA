@@ -137,20 +137,26 @@ class RrhhDataService:
         matched_word = None
         matched_keyword = None
 
-        # Por cada categoría
+        # 1. Búsqueda exacta de keywords completas en la query
+        for category, keywords in categories.items():
+            for keyword in keywords:
+                # Si la keyword (ej "solicitud de crédito") está entera en la query
+                if f" {keyword} " in f" {query_lower} " or query_lower.startswith(f"{keyword} ") or query_lower.endswith(f" {keyword}") or query_lower == keyword:
+                    logger.info(f"  ✓ Coincidencia exacta de frase: '{keyword}' → {category}")
+                    return category
+
+        # 2. Búsqueda difusa (fuzzy) para tolerar errores ortográficos
         for category, keywords in categories.items():
             for word in words:
+                if len(word) <= 3:
+                    continue  # Ignorar palabras muy cortas como 'de', 'el', 'si', 'hay'
+                
                 for keyword in keywords:
-                    # Similitud exacta (rápido)
-                    if keyword in word or word in keyword:
-                        logger.info(f"  ✓ Coincidencia exacta: '{word}' = '{keyword}' → {category}")
-                        return category
-
-                    # Similitud difusa (tolerancia ortográfica baja desde 40%)
+                    # Similitud difusa (tolerancia ortográfica)
                     similarity = SequenceMatcher(None, word, keyword).ratio()
 
-                    # Si la similitud es >= 40% y es mejor que lo que tenemos
-                    if similarity >= 0.40 and similarity > best_score:
+                    # Requerir al menos 65% de similitud para evitar falsos positivos
+                    if similarity >= 0.65 and similarity > best_score:
                         best_score = similarity
                         best_match = category
                         matched_word = word
