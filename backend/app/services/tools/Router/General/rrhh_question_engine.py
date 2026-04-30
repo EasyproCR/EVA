@@ -48,7 +48,7 @@ class RrhhQuestionEngine(BaseQueryEngine):
         'política interna', 'norma', 'normas', 'reglamento',
 
         # Recordatorios y alertas
-        'recordatorio', 'recordatorios', 'tatiana', 'rrhh', 'recursos humanos',
+        'recordatorio', 'recordatorios', 'rrhh', 'recursos humanos',
         'alerta', 'alertas', 'pendiente', 'pendientes', 'oendiente', 'oendientes',
         'tarea', 'tareas', 'administrador',
 

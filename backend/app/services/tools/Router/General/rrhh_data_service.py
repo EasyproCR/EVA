@@ -55,7 +55,7 @@ class RrhhDataService:
     }
 
     REMINDERS_KEYWORDS = {
-        'recordatorio', 'recordatorios', 'tatiana', 'tarea', 'tareas', 'pendiente',
+        'recordatorio', 'recordatorios', 'tarea', 'tareas', 'pendiente',
         'debido', 'vencimiento', 'administrador', 'reminder', 'alerta', 'alertas'
     }
 
