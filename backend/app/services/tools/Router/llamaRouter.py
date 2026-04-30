@@ -20,6 +20,7 @@ from app.services.tools.Router.General.pending_reminders_question_engine import 
 from app.services.tools.Router.General.customer_reminders_question_engine import CustomerRemindersQuestionEngine
 from app.services.tools.Router.General.posts_generation_engine import PostsGenerationEngine
 from app.services.tools.Router.General.quotes_generation_engine import QuotesGenerationEngine
+from app.services.tools.Router.General.customer_question_engine import CustomerQuestionEngine
 from app.services.tools.Router.General.query_preprocessor import QueryPreprocessor, QueryType
 from app.services.conversation_context import ConversationContext
 from app.data import easycoreContext
@@ -355,6 +356,35 @@ class LlamaRouter:
             logger.error(f"✗ Error configurando quotes_generation: {e}")
             raise
 
+        # -------- Customer Info Engine (Buscar clientes personales por necesidad/ubicación) --------
+        try:
+            customer_engine = CustomerQuestionEngine(sql_database=self.db2_sql_db)
+            customer_tool = QueryEngineTool(
+                query_engine=customer_engine,
+                metadata=ToolMetadata(
+                    name="customer_info",
+                    description=(
+                        "👥 BUSCADOR DE CLIENTES PERSONALES (Necesidades y Ubicación)\n\n"
+                        "USAR CUANDO el usuario pide:\n"
+                        "- Buscar clientes por sus necesidades (qué andan buscando)\n"
+                        "- Buscar clientes por su lugar de residencia o dirección\n"
+                        "- Encontrar prospectos para ofrecerles una propiedad\n\n"
+                        "EJEMPLOS:\n"
+                        "✅ '¿Cuáles clientes personales de Adm buscan lote en Upala?'\n"
+                        "✅ 'Ayúdame a saber cuáles clientes son de Heredia'\n"
+                        "✅ '¿Qué personas necesitan casa en la playa?'\n\n"
+                        "ACCESO: Restringido a 'servicio_al_cliente', 'master' y 'admin'.\n"
+                        "NOTA: Esta herramienta busca en el inventario de clientes personales y sus preferencias."
+                    ),
+                ),
+            )
+            self.customer_engine = customer_engine
+            self.customer_tool = customer_tool
+            logger.info("✓ Tool 'customer_info' configurado correctamente")
+        except Exception as e:
+            logger.error(f"✗ Error configurando customer_info: {e}")
+            raise
+
         # -------- Pending Reminders Engine (Recordatorios/tareas pendientes del usuario) --------
         try:
             reminders_engine = PendingRemindersQuestionEngine(sql_database=self.db2_sql_db)
@@ -505,7 +535,7 @@ class LlamaRouter:
             raise
 
         # -------- Router --------
-        self.base_tools = [sql_db1_tool, banks_tool, rrhh_tool, operations_tool, posts_tool, posts_gen_tool, quotes_gen_tool, reminders_tool, customer_reminders_tool, general_tool, property_info_tool, internet_tool, internet_search_tool]
+        self.base_tools = [sql_db1_tool, banks_tool, rrhh_tool, operations_tool, posts_tool, posts_gen_tool, quotes_gen_tool, customer_tool, reminders_tool, customer_reminders_tool, general_tool, property_info_tool, internet_tool, internet_search_tool]
         self.default_tools = [*self.base_tools, sql_db2_tool]
         self.router = RouterQueryEngine(
             selector=PydanticSingleSelector.from_defaults(),
@@ -585,6 +615,7 @@ class LlamaRouter:
             self.posts_engine.set_user_roles(user_roles)
             self.operations_engine.set_user_roles(user_roles)
             self.quotes_gen_engine.set_user_roles(user_roles)
+            self.customer_engine.set_user_roles(user_roles)
             if user_id:
                 self.reminders_engine.set_user_id(user_id)
                 self.customer_reminders_engine.set_user_id(user_id)
