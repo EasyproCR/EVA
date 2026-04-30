@@ -44,9 +44,10 @@ class QuotesGenerationEngine(BaseQueryEngine):
     def _extract_property_id(self, query: str) -> Optional[int]:
         """Extrae el ID de la propiedad de la consulta."""
         patterns = [
-            r'(?:id|propiedad|inmueble|casa|lote|terreno)\s+#?(\d+)',
-            r'#(\d+)',
-            r'(?:del|la)\s+(?:inmueble|propiedad)\s+(\d+)'
+            r'(?:id|propiedad|inmueble|casa|lote|terreno)[:\s]*#?\s*(\d+)',
+            r'#\s*(\d+)',
+            r'(?:del|la)\s+(?:inmueble|propiedad)\s+(\d+)',
+            r'(\d{4,})'  # Fallback: any number with 4 or more digits could be an ID
         ]
         query_lower = query.lower()
         for pattern in patterns:
