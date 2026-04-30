@@ -50,6 +50,12 @@ class QueryPreprocessor:
             # Validar que sea una consulta sobre la propiedad específica
             # (no solo que mencione un ID aislado)
             if self._is_property_question(query_lower):
+                # PERO: Si es una solicitud de cotización, no la interceptes. 
+                # Deja que el router LLM la envíe al QuotesGenerationEngine
+                if any(kw in query_lower for kw in ['cotiza', 'cotización', 'cotizacion', 'cuota', 'prima', 'financiamiento']):
+                    logger.info(f"  ✓ Es una solicitud de cotización → Dejando que el router LLM la procese")
+                    return QueryType.GENERAL, None
+                
                 logger.info(f"  ✓ Consulta sobre propiedad → EnrutandoDirecto a property_info")
                 return QueryType.PROPERTY_ID, property_id
 

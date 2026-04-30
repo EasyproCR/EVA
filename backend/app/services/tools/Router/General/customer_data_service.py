@@ -100,10 +100,30 @@ class CustomerDataService:
 
     def _search_customers(self, search_terms: str) -> List[Dict[str, Any]]:
         """Realiza la búsqueda en la base de datos."""
-        # Limpiar el término de búsqueda
+        # Limpiar el término de búsqueda y remover palabras comunes cortas
         clean_term = search_terms.replace("?", "").strip()
+        words = [w for w in clean_term.lower().split() if len(w) > 2 and w not in ['los', 'las', 'del', 'que', 'con']]
         
-        sql = """
+        if not words:
+            # Fallback if all words were filtered out
+            words = [clean_term.lower()]
+
+        # Construir condiciones dinámicas para cada palabra
+        need_conditions = []
+        address_conditions = []
+        params = {}
+        
+        for i, word in enumerate(words):
+            param_name = f"word_{i}"
+            params[param_name] = f"%{word}%"
+            need_conditions.append(f"LOWER(pc.customer_need) LIKE :{param_name}")
+            address_conditions.append(f"LOWER(pc.address) LIKE :{param_name}")
+
+        # La lógica es: (todas las palabras en necesidad) OR (todas las palabras en dirección)
+        need_sql = " AND ".join(need_conditions)
+        address_sql = " AND ".join(address_conditions)
+        
+        sql = f"""
         SELECT 
             pc.full_name, 
             pc.phone_number, 
@@ -112,8 +132,7 @@ class CustomerDataService:
             u.name as advisor_name
         FROM personal_customers pc
         LEFT JOIN users u ON pc.user_id = u.id
-        WHERE LOWER(pc.customer_need) LIKE :search_term 
-           OR LOWER(pc.address) LIKE :search_term
+        WHERE ({need_sql}) OR ({address_sql})
         ORDER BY pc.created_at DESC
         LIMIT 20
         """
@@ -121,7 +140,7 @@ class CustomerDataService:
         try:
             engine = self.sql_database._engine
             with engine.connect() as conn:
-                result = conn.execute(text(sql), {'search_term': f"%{clean_term.lower()}%"})
+                result = conn.execute(text(sql), params)
                 rows = result.mappings().all()
                 return [dict(row) for row in rows]
         except Exception as e:
