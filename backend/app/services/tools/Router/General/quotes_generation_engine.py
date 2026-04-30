@@ -103,11 +103,17 @@ class QuotesGenerationEngine(BaseQueryEngine):
                 if not price or float(price) <= 0:
                     price = property_data.get('precio_local')
 
+                provincia = property_data.get('provincia') or ''
+                canton = property_data.get('canton') or ''
+                location = f"{provincia}, {canton}".strip(", ").strip()
+                if not location:
+                    location = "No especificada"
+
                 return {
                     'id': property_data.get('id'),
                     'name': property_data.get('nombre'),
                     'price': price,
-                    'location': f"{property_data.get('provincia', '')}, {property_data.get('canton', '')}",
+                    'location': location,
                     'property_type': property_data.get('tipo_propiedad'),
                     'bank_name': property_data.get('nombre_banco')
                 }
