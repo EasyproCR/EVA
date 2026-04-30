@@ -29,7 +29,7 @@ class PostsQuestionEngine(BaseQueryEngine):
         'contenido', 'publicar', 'publicado', 'trending', 'engagement', 'reach',
         'campaña social', 'campañas sociales', 'reacción', 'reacciones',
         'comentario', 'comentarios', 'compartir', 'compartido', 'share', 'shares',
-        'vista', 'vistas', 'visualización', 'visualizaciones'
+        'vista', 'vistas', 'visualización', 'visualizaciones', 'sondeo'
     }
 
     def __init__(self, sql_database=None):
@@ -49,9 +49,13 @@ class PostsQuestionEngine(BaseQueryEngine):
         return any(keyword in query_lower for keyword in self.POSTS_KEYWORDS)
 
     def _has_posts_access(self) -> bool:
-        """Verifica si el usuario tiene acceso a posts/publicaciones - ACCESO ABIERTO"""
-        # Acceso abierto para todos los usuarios
-        return True
+        """Verifica si el usuario tiene acceso a posts/publicaciones"""
+        if not self.user_roles:
+            return False
+            
+        roles_permitidos = {'servicio_al_cliente', 'marketing', 'master', 'admin', 'super_admin', 'administrator', 'operaciones', 'sales'}
+        user_roles_set = {str(r).lower().strip() for r in self.user_roles}
+        return bool(roles_permitidos.intersection(user_roles_set))
 
     def _query(self, query_bundle: QueryBundle) -> Response:
         """

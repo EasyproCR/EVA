@@ -24,7 +24,7 @@ class PostsDataService:
         'post', 'posts', 'publicación', 'publicaciones', 'social', 'sociales',
         'instagram', 'facebook', 'twitter', 'tiktok', 'linkedin', 'youtube',
         'red social', 'redes sociales', 'reel', 'reels', 'feed', 'story', 'stories',
-        'contenido', 'publicar', 'publicado', 'trending', 'engagement', 'reach'
+        'contenido', 'publicar', 'publicado', 'trending', 'engagement', 'reach', 'sondeo'
     }
 
     REACTIONS_KEYWORDS = {'reacción', 'reacciones', 'likes', 'like', 'reacciona', 'engagement'}
@@ -144,6 +144,28 @@ class PostsDataService:
 
         # Por defecto, retornar todos
         return "ALL_POSTS"
+
+    def _extract_url_from_query(self, query: str) -> Optional[str]:
+        import re
+        url_pattern = r'https?://[^\s]+'
+        match = re.search(url_pattern, query)
+        return match.group(0) if match else None
+
+    def _get_post_by_url(self, query: str) -> str:
+        url = self._extract_url_from_query(query)
+        if not url:
+            return "No encontré una URL válida en tu consulta."
+        try:
+            sql = "SELECT c.name as campaign_name, cs.platform, cs.link, cs.reactions, cs.comments, cs.shares, cs.views FROM campaign_socials cs JOIN campaigns c ON cs.campaign_id = c.id WHERE cs.link LIKE :url LIMIT 1"
+            results = self._execute_query(sql, {'url': f"%{url}%"})
+            if not results:
+                return "No encontré datos para esa publicación específica en la base de datos."
+            row = results[0]
+            platform_emoji = self._get_platform_emoji(row['platform'])
+            return f"{platform_emoji} **DATOS DE LA PUBLICACIÓN**\n\n**Campaña:** {row['campaign_name']}\n**Plataforma:** {row['platform'].upper()}\n**Enlace:** {row['link']}\n\n❤️ {row['reactions']} reacciones | 💬 {row['comments']} comentarios | 📤 {row['shares']} compartidos | 👁️ {row['views']} vistas"
+        except Exception as e:
+            logger.error(f"❌ Error en _get_post_by_url: {str(e)}")
+            return f"⚠️ Error buscando la publicación: {str(e)[:100]}"
 
     def _get_all_posts(self, query: str, user_roles: List[str]) -> str:
         """Obtiene todos los posts/publicaciones"""
