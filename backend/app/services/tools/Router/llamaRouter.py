@@ -21,6 +21,7 @@ from app.services.tools.Router.General.customer_reminders_question_engine import
 from app.services.tools.Router.General.posts_generation_engine import PostsGenerationEngine
 from app.services.tools.Router.General.quotes_generation_engine import QuotesGenerationEngine
 from app.services.tools.Router.General.customer_question_engine import CustomerQuestionEngine
+from app.services.tools.Router.General.property_promo_engine import PropertyPromoEngine
 from app.services.tools.Router.General.query_preprocessor import QueryPreprocessor, QueryType
 from app.services.conversation_context import ConversationContext
 from app.data import easycoreContext
@@ -488,6 +489,39 @@ class LlamaRouter:
             logger.error(f"✗ Error configurando operations_appointments: {e}")
             raise
 
+        # -------- Property Promo Engine (Estrategia de promoción por ID) --------
+        try:
+            promo_engine = PropertyPromoEngine(
+                property_db_service=self.property_db_service
+            )
+            promo_tool = QueryEngineTool(
+                query_engine=promo_engine,
+                metadata=ToolMetadata(
+                    name="property_promo",
+                    description=(
+                        "📣 ESTRATEGIA DE PROMOCIÓN PARA PROPIEDADES\n\n"
+                        "USAR CUANDO el usuario pide:\n"
+                        "- Estrategia de marketing para una propiedad\n"
+                        "- Plan de promoción, publicidad o visibilidad de un inmueble\n"
+                        "- Ideas de videos, reels o contenido para promocionar una propiedad\n"
+                        "- Cómo vender/publicitar mejor una propiedad específica\n\n"
+                        "EJEMPLOS:\n"
+                        "✅ 'Eva, dame una estrategia de promoción para el ID 150'\n"
+                        "✅ 'Cómo promociono la propiedad 432?'\n"
+                        "✅ 'Plan de marketing para el inmueble ID 90'\n"
+                        "✅ 'Ideas de contenido para publicitar el ID 200'\n\n"
+                        "ACCESO: Abierto para todos los usuarios.\n"
+                        "NOTA: Genera plan semanal diferente cada semana automáticamente."
+                    ),
+                ),
+            )
+            self.promo_engine = promo_engine
+            self.promo_tool = promo_tool
+            logger.info("✓ Tool 'property_promo' configurado correctamente")
+        except Exception as e:
+            logger.error(f"✗ Error configurando property_promo: {e}")
+            raise
+
         try:
             tavily = TavilyBienesQueryEngine(
                 api_key=settings.tavily_api_key,
@@ -538,7 +572,7 @@ class LlamaRouter:
             raise
 
         # -------- Router --------
-        self.base_tools = [sql_db1_tool, banks_tool, rrhh_tool, operations_tool, posts_tool, posts_gen_tool, quotes_gen_tool, customer_tool, reminders_tool, customer_reminders_tool, general_tool, property_info_tool, internet_tool, internet_search_tool]
+        self.base_tools = [sql_db1_tool, banks_tool, rrhh_tool, operations_tool, posts_tool, posts_gen_tool, quotes_gen_tool, customer_tool, reminders_tool, customer_reminders_tool, general_tool, property_info_tool, promo_tool, internet_tool, internet_search_tool]
         self.default_tools = [*self.base_tools, sql_db2_tool]
         self.router = RouterQueryEngine(
             selector=PydanticSingleSelector.from_defaults(),
@@ -622,10 +656,26 @@ class LlamaRouter:
                 logger.info(f"🚀 [HARDCODED] Cotización detectada para ID #{_pid} → quotes_gen_engine")
                 from llama_index.core.schema import QueryBundle
                 _qb = QueryBundle(query_str=user_query)
-                # Asignar roles ANTES de llamar al engine
                 self.quotes_gen_engine.set_user_roles(user_roles)
                 _resp = self.quotes_gen_engine._query(_qb)
                 logger.info(f"✅ [HARDCODED] Cotización generada: {str(_resp)[:150]}...")
+                return _resp
+
+            # 0.5️⃣ DETECCIÓN HARDCODED: Estrategia/Promoción con ID
+            _PROMO_KW = ['estrategia', 'promocion', 'promoción', 'marketing', 'publicitar',
+                         'publicidad', 'plan de', 'promociona', 'difunde', 'visibilidad',
+                         'campana', 'campaña', 'posicionar', 'impulsar', 'contenido para',
+                         'ideas para', 'potenciar', 'cómo vendo', 'como vendo']
+            _has_promo_kw = any(kw in _q_lower for kw in _PROMO_KW)
+            if _has_promo_kw and _id_match:
+                _pid = int(next(g for g in _id_match.groups() if g is not None))
+                logger.info(f"🚀 [HARDCODED] Estrategia de promoción para ID #{_pid} → promo_engine")
+                from llama_index.core.schema import QueryBundle
+                _qb = QueryBundle(query_str=user_query)
+                if user_id:
+                    self.promo_engine.set_user_id(user_id)
+                _resp = self.promo_engine._query(_qb)
+                logger.info(f"✅ [HARDCODED] Estrategia generada: {str(_resp)[:150]}...")
                 return _resp
 
             # 1️⃣ PRE-PROCESAMIENTO: Detectar patrones específicos

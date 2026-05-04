@@ -9,6 +9,9 @@ from app.core.config import get_settings
 from app.schemas.chat import ChatRequest, ChatResponse, DeleteRequest
 from app.api.ia_servicio import require_auth_dependency, validate_mensaje_dependency, validate_delete_body_dependency, get_user_info_dependency
 from app.services.llamaOrchestor import LlamaOrchestor
+import logging
+
+_log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["ia"])
 
@@ -65,7 +68,14 @@ async def saludo(
 
     # Verificar recordatorios para usuarios de RRHH
     user_roles = user_info.get('roles', [])
-    user_id = user_info.get('id')
+    raw_user_id = user_info.get('id')
+    # Convertir a int si viene como string desde el JWT
+    try:
+        user_id = int(raw_user_id) if raw_user_id not in (None, '', 'None') else None
+    except (ValueError, TypeError):
+        user_id = None
+
+    _log.info(f"[SALUDO] user_id={user_id} | roles={user_roles}")
     recordatorios_info = None
 
     try:
@@ -103,7 +113,7 @@ async def saludo(
             saludo_texto += "\n\n✅ ¡Todo en orden! No tienes alertas RRHH pendientes."
             recordatorios_info = {"count": 0, "reminders": [], "type": "rrhh"}
     except Exception as e:
-        # Si falla, solo mostrar saludo básico
+        _log.warning(f"[SALUDO] Error en RRHH reminders: {e}")
         pass
 
     # Verificar recordatorios de clientes para todos los usuarios
@@ -150,8 +160,7 @@ async def saludo(
         elif customer_reminders_result.get("authorized") and customer_reminders_result.get("count", 0) == 0:
             pass  # No mostrar si no hay recordatorios
     except Exception as e:
-        # Si falla, solo mostrar saludo básico
-        pass
+        _log.warning(f"[SALUDO] Error en customer reminders: {e}")
 
     # Verificar recordatorios de Operations para usuarios con ese rol
     try:
@@ -195,8 +204,7 @@ async def saludo(
                     "type": "operations"
                 }
     except Exception as e:
-        # Si falla, solo mostrar saludo básico
-        pass
+        _log.warning(f"[SALUDO] Error en operations reminders: {e}")
 
     saludo_texto += "\n\n¿En qué puedo ayudarte hoy?"
 

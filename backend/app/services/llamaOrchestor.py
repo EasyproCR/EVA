@@ -174,8 +174,8 @@ class LlamaOrchestor:
         Returns:
             dict con recordatorios o mensaje de no autorizado
         """
-        # Verificar si tiene rol de operations
-        allowed_roles = {'super_admin', 'operations'}
+        # Verificar si tiene rol que puede ver citas de operaciones
+        allowed_roles = {'super_admin', 'operations', 'gerente', 'servicio_al_cliente'}
         roles_lower = [str(r).lower().strip() for r in user_roles]
 
         if not any(role in allowed_roles for role in roles_lower):
