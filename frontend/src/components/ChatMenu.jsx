@@ -22,14 +22,24 @@ const comunication = async (mensaje) => {
 function ChatMenu() {
     
     useEffect(() => {
-    chatService.getPrimerMensaje().then((mensaje) => {
-        setConversation([{
-            id: Date.now().toString(),
-            text: mensaje,
-            sender: "bot",
-            timestamp: new Date(),
-        }]);
-    });
+    chatService.getPrimerMensaje()
+        .then((mensaje) => {
+            setConversation([{
+                id: Date.now().toString(),
+                text: mensaje || "¡Hola! ¿En qué puedo ayudarte?",
+                sender: "bot",
+                timestamp: new Date(),
+            }]);
+        })
+        .catch((error) => {
+            console.error("Error al cargar el saludo:", error);
+            setConversation([{
+                id: Date.now().toString(),
+                text: "No se pudo cargar el saludo inicial. ¿En qué te ayudo?",
+                sender: "bot",
+                timestamp: new Date(),
+            }]);
+        });
     }, []);
 
     useEffect(() => {
