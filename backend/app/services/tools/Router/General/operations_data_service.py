@@ -4,11 +4,44 @@ Operations Data Service - Procesa consultas de citas y recordatorios de operacio
 
 import logging
 from typing import Optional, Dict, List, Any
-from datetime import datetime
+from datetime import datetime, date
 from sqlalchemy import text
 from difflib import SequenceMatcher
 
 logger = logging.getLogger(__name__)
+
+
+def _format_reminder_date(reminder_date) -> str:
+    """
+    Convierte reminder_date al formato legible dd/mm/YYYY [HH:MM].
+    Acepta: str (con o sin hora), datetime, date, o None.
+    """
+    if reminder_date is None:
+        return ''
+
+    # Si ya es un objeto datetime (MySQL lo retorna así para DATETIME)
+    if isinstance(reminder_date, datetime):
+        if reminder_date.hour == 0 and reminder_date.minute == 0:
+            return reminder_date.strftime('%d/%m/%Y')
+        return reminder_date.strftime('%d/%m/%Y %H:%M')
+
+    # Si es un objeto date simple (sin hora)
+    if isinstance(reminder_date, date):
+        return reminder_date.strftime('%d/%m/%Y')
+
+    # Si es string, intentar parsear varios formatos
+    reminder_str = str(reminder_date).strip()
+    for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M', '%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y'):
+        try:
+            dt = datetime.strptime(reminder_str, fmt)
+            if dt.hour == 0 and dt.minute == 0:
+                return dt.strftime('%d/%m/%Y')
+            return dt.strftime('%d/%m/%Y %H:%M')
+        except ValueError:
+            continue
+
+    # Fallback: devolver tal cual
+    return reminder_str
 
 
 class OperationsDataService:
@@ -179,14 +212,7 @@ class OperationsDataService:
                     status = appt.get('status', 'pendiente')
 
                     # Formatear fecha
-                    if isinstance(reminder_date, str):
-                        try:
-                            date_obj = datetime.strptime(reminder_date, '%Y-%m-%d')
-                            date_formatted = date_obj.strftime('%d/%m/%Y')
-                        except:
-                            date_formatted = reminder_date
-                    else:
-                        date_formatted = str(reminder_date)
+                    date_formatted = _format_reminder_date(reminder_date)
 
                     # Emoji de estado
                     status_emoji = "⏳" if status == "pending" else "⚙️"
@@ -259,14 +285,7 @@ class OperationsDataService:
                     status = appt.get('status', 'pendiente')
 
                     # Formatear fecha
-                    if isinstance(reminder_date, str):
-                        try:
-                            date_obj = datetime.strptime(reminder_date, '%Y-%m-%d')
-                            date_formatted = date_obj.strftime('%d/%m/%Y')
-                        except:
-                            date_formatted = reminder_date
-                    else:
-                        date_formatted = str(reminder_date)
+                    date_formatted = _format_reminder_date(reminder_date)
 
                     # Emoji de estado
                     status_emoji = "⏳" if status == "pending" else "✅" if status == "completed" else "⚙️"
@@ -358,15 +377,8 @@ class OperationsDataService:
                     customer_name = appt.get('customer_name', 'Cliente sin asignar')
                     reminder_date = appt.get('reminder_date')
 
-                    # Formatear fecha
-                    if isinstance(reminder_date, str):
-                        try:
-                            date_obj = datetime.strptime(reminder_date, '%Y-%m-%d')
-                            date_formatted = date_obj.strftime('%d/%m/%Y')
-                        except:
-                            date_formatted = str(reminder_date)
-                    else:
-                        date_formatted = str(reminder_date)
+                    # Formatear fecha — maneja str, date y datetime
+                    date_formatted = _format_reminder_date(reminder_date)
 
                     reminders.append({
                         'emoji': '📅',

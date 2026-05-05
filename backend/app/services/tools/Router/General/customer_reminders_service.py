@@ -4,10 +4,32 @@ Customer Reminders Service - Muestra recordatorios de clientes para el usuario
 
 import logging
 from typing import Optional, Dict, List, Any
-from datetime import datetime
+from datetime import datetime, date
 from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
+
+
+def _format_reminder_date(reminder_date) -> str:
+    """Convierte reminder_date al formato legible dd/mm/YYYY [HH:MM]."""
+    if reminder_date is None:
+        return ''
+    if isinstance(reminder_date, datetime):
+        if reminder_date.hour == 0 and reminder_date.minute == 0:
+            return reminder_date.strftime('%d/%m/%Y')
+        return reminder_date.strftime('%d/%m/%Y %H:%M')
+    if isinstance(reminder_date, date):
+        return reminder_date.strftime('%d/%m/%Y')
+    reminder_str = str(reminder_date).strip()
+    for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M', '%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y'):
+        try:
+            dt = datetime.strptime(reminder_str, fmt)
+            if dt.hour == 0 and dt.minute == 0:
+                return dt.strftime('%d/%m/%Y')
+            return dt.strftime('%d/%m/%Y %H:%M')
+        except ValueError:
+            continue
+    return reminder_str
 
 
 class CustomerRemindersService:
@@ -312,7 +334,7 @@ class CustomerRemindersService:
                     'emoji': emoji,
                     'titulo': f"{tipo_label}: {customer_name}",
                     'descripcion': description,
-                    'fecha_vencimiento': str(reminder_date) if reminder_date else '',
+                    'fecha_vencimiento': _format_reminder_date(reminder_date),
                     'accion': 'Agendar cita' if reminder_type == "appointment" else 'Hacer seguimiento'
                 })
 
