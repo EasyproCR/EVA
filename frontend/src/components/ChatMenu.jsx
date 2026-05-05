@@ -43,7 +43,9 @@ function ChatMenu() {
     }, []);
 
     useEffect(() => {
-        chatService.ensureReady();
+        chatService.ensureReady().catch(error => {
+            console.error("Error en ensureReady:", error);
+        });
     }, []);
 
 
