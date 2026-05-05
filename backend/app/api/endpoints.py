@@ -78,11 +78,15 @@ async def saludo(
     _log.info(f"[SALUDO] user_id={user_id} | roles={user_roles}")
     recordatorios_info = None
 
+    recordatorios_info = {"count": 0, "reminders": []}
+    has_reminders = False
+
     try:
         orch = http_req.app.state.orch
         reminders_result = orch.get_rrhh_reminders(user_roles)
 
         if reminders_result.get("authorized") and reminders_result.get("count", 0) > 0:
+            has_reminders = True
             # Construir mensaje de recordatorios RRHH
             count = reminders_result["count"]
             reminders = reminders_result["reminders"]
@@ -104,14 +108,11 @@ async def saludo(
                     recordatorios_texto += f"\n   _→ {accion}_"
 
             saludo_texto += recordatorios_texto
-            recordatorios_info = {
-                "count": count,
-                "reminders": reminders,
-                "type": "rrhh"
-            }
+            recordatorios_info["count"] += count
+            recordatorios_info["reminders"].extend(reminders)
+            
         elif reminders_result.get("authorized") and reminders_result.get("count", 0) == 0:
             saludo_texto += "\n\n✅ ¡Todo en orden! No tienes alertas RRHH pendientes."
-            recordatorios_info = {"count": 0, "reminders": [], "type": "rrhh"}
     except Exception as e:
         _log.warning(f"[SALUDO] Error en RRHH reminders: {e}")
         pass
@@ -122,6 +123,7 @@ async def saludo(
         customer_reminders_result = orch.get_customer_reminders(user_id)
 
         if customer_reminders_result.get("authorized") and customer_reminders_result.get("count", 0) > 0:
+            has_reminders = True
             # Construir mensaje de recordatorios de clientes
             count = customer_reminders_result["count"]
             reminders = customer_reminders_result["reminders"]
@@ -143,22 +145,9 @@ async def saludo(
                     recordatorios_clientes_texto += f"\n   _→ {accion}_"
 
             saludo_texto += recordatorios_clientes_texto
-
-            # Guardar ambos tipos de recordatorios en la respuesta
-            if recordatorios_info:
-                recordatorios_info["customer_reminders"] = {
-                    "count": count,
-                    "reminders": reminders,
-                    "type": "customer"
-                }
-            else:
-                recordatorios_info = {
-                    "count": count,
-                    "reminders": reminders,
-                    "type": "customer"
-                }
-        elif customer_reminders_result.get("authorized") and customer_reminders_result.get("count", 0) == 0:
-            pass  # No mostrar si no hay recordatorios
+            recordatorios_info["count"] += count
+            recordatorios_info["reminders"].extend(reminders)
+            
     except Exception as e:
         _log.warning(f"[SALUDO] Error en customer reminders: {e}")
 
@@ -168,6 +157,7 @@ async def saludo(
         operations_reminders_result = orch.get_operations_reminders(user_id, user_roles)
 
         if operations_reminders_result.get("authorized") and operations_reminders_result.get("count", 0) > 0:
+            has_reminders = True
             # Construir mensaje de recordatorios de Operations/Citas
             count = operations_reminders_result["count"]
             reminders = operations_reminders_result["reminders"]
@@ -189,27 +179,16 @@ async def saludo(
                     recordatorios_operations_texto += f"\n   _→ {accion}_"
 
             saludo_texto += recordatorios_operations_texto
-
-            # Guardar recordatorios de operations en la respuesta
-            if recordatorios_info:
-                recordatorios_info["operations_reminders"] = {
-                    "count": count,
-                    "reminders": reminders,
-                    "type": "operations"
-                }
-            else:
-                recordatorios_info = {
-                    "count": count,
-                    "reminders": reminders,
-                    "type": "operations"
-                }
+            recordatorios_info["count"] += count
+            recordatorios_info["reminders"].extend(reminders)
+            
     except Exception as e:
         _log.warning(f"[SALUDO] Error en operations reminders: {e}")
 
     saludo_texto += "\n\n¿En qué puedo ayudarte hoy?"
 
     response = {"saludo": saludo_texto}
-    if recordatorios_info is not None:
+    if has_reminders or recordatorios_info["count"] == 0:
         response["recordatorios"] = recordatorios_info
 
     return response

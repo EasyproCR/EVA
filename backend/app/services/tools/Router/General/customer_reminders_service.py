@@ -303,14 +303,15 @@ class CustomerRemindersService:
                 cr.reminder_type,
                 cr.description,
                 cr.reminder_date,
-                c.full_name,
+                COALESCE(c.full_name, 'Cliente sin nombre') as full_name,
                 c.phone_number,
                 c.property_name
             FROM customer_reminders cr
-            JOIN customers c ON cr.customer_id = c.id
+            LEFT JOIN customers c ON cr.customer_id = c.id
             WHERE cr.user_id = :user_id
-            AND cr.status = 'pending'
+            AND LOWER(COALESCE(cr.status, '')) IN ('pending', 'in_progress', 'open', 'scheduled', 'confirmed')
             AND cr.reminder_date IS NOT NULL
+            AND cr.reminder_date >= DATE_SUB(CURDATE(), INTERVAL 1 DAY)
             ORDER BY cr.reminder_date ASC
             LIMIT 5
             """

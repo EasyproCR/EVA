@@ -359,9 +359,9 @@ class OperationsDataService:
             FROM customer_reminders cr
             LEFT JOIN customers c ON cr.customer_id = c.id
             WHERE cr.user_id = {user_id}
-            AND cr.reminder_type = 'appointment'
-            AND cr.status IN ('pending', 'in_progress')
-            AND cr.reminder_date >= CURDATE()
+            AND LOWER(COALESCE(cr.reminder_type, '')) LIKE '%appointment%'
+            AND LOWER(COALESCE(cr.status, '')) IN ('pending', 'in_progress', 'scheduled', 'confirmed', 'open')
+            AND cr.reminder_date >= DATE_SUB(CURDATE(), INTERVAL 1 DAY)
             ORDER BY cr.reminder_date ASC
             LIMIT 10
             """.format(user_id=user_id)
