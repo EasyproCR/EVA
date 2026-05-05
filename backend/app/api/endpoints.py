@@ -78,7 +78,7 @@ async def saludo(
     _log.info(f"[SALUDO] user_id={user_id} | roles={user_roles}")
     recordatorios_info = None
 
-    recordatorios_info = {"count": 0, "reminders": []}
+    recordatorios_info = {}
     has_reminders = False
 
     try:
@@ -108,8 +108,11 @@ async def saludo(
                     recordatorios_texto += f"\n   _→ {accion}_"
 
             saludo_texto += recordatorios_texto
-            recordatorios_info["count"] += count
-            recordatorios_info["reminders"].extend(reminders)
+            if "rrhh_reminders" not in recordatorios_info:
+                recordatorios_info["rrhh_reminders"] = reminders_result
+            else:
+                recordatorios_info["rrhh_reminders"]["count"] += count
+                recordatorios_info["rrhh_reminders"]["reminders"].extend(reminders)
             
         elif reminders_result.get("authorized") and reminders_result.get("count", 0) == 0:
             saludo_texto += "\n\n✅ ¡Todo en orden! No tienes alertas RRHH pendientes."
@@ -145,8 +148,11 @@ async def saludo(
                     recordatorios_clientes_texto += f"\n   _→ {accion}_"
 
             saludo_texto += recordatorios_clientes_texto
-            recordatorios_info["count"] += count
-            recordatorios_info["reminders"].extend(reminders)
+            if "customer_reminders" not in recordatorios_info:
+                recordatorios_info["customer_reminders"] = customer_reminders_result
+            else:
+                recordatorios_info["customer_reminders"]["count"] += count
+                recordatorios_info["customer_reminders"]["reminders"].extend(reminders)
             
     except Exception as e:
         _log.warning(f"[SALUDO] Error en customer reminders: {e}")
@@ -179,8 +185,11 @@ async def saludo(
                     recordatorios_operations_texto += f"\n   _→ {accion}_"
 
             saludo_texto += recordatorios_operations_texto
-            recordatorios_info["count"] += count
-            recordatorios_info["reminders"].extend(reminders)
+            if "operations_reminders" not in recordatorios_info:
+                recordatorios_info["operations_reminders"] = operations_reminders_result
+            else:
+                recordatorios_info["operations_reminders"]["count"] += count
+                recordatorios_info["operations_reminders"]["reminders"].extend(reminders)
             
     except Exception as e:
         _log.warning(f"[SALUDO] Error en operations reminders: {e}")
@@ -188,7 +197,7 @@ async def saludo(
     saludo_texto += "\n\n¿En qué puedo ayudarte hoy?"
 
     response = {"saludo": saludo_texto}
-    if has_reminders or recordatorios_info["count"] == 0:
+    if has_reminders or len(recordatorios_info) == 0:
         response["recordatorios"] = recordatorios_info
 
     return response

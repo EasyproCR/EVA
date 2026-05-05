@@ -20,7 +20,10 @@ const comunication = async (mensaje) => {
 };
 
 function ChatMenu() {
-    
+    const [conversation, setConversation] = useState(initialConversation);
+    const [input, setInput] = useState("");
+    const [loading, setLoading] = useState(false);
+
     useEffect(() => {
     chatService.getPrimerMensaje()
         .then((mensaje) => {
@@ -47,12 +50,6 @@ function ChatMenu() {
             console.error("Error en ensureReady:", error);
         });
     }, []);
-
-
-
-    const [conversation, setConversation] = useState(initialConversation)
-    const [input, setInput] = useState("")
-    const [loading, setLoading] = useState(false)
 
     useEffect(() => {
         if (nav && typeof nav.type === "string" && nav.type === "reload") {
