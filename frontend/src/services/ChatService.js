@@ -1,7 +1,6 @@
 import EasyProService from "./EasyProService";
 
-import { getApiBaseUrl } from "../utils/runtimeConfig";
-const BASE_URL = getApiBaseUrl();
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api";
 class ChatService {
     id = null;
     nombre = "";
