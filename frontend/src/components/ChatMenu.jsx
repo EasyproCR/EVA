@@ -1,7 +1,7 @@
 import {useEffect,useState } from 'react'
 import ChatService from '../services/ChatService';
 import { Bot, Send } from "lucide-react";
-import { isReloading } from '../hooks/EstadoPagina';
+
 import LoadingDots from './LoadingDots';
 import AudioPlayer from './audioEffect/AudioPlayer';
 import Pop from "../../src/assets/Audio/Pop.wav";
@@ -51,11 +51,7 @@ function ChatMenu() {
         });
     }, []);
 
-    useEffect(() => {
-        if (nav && typeof nav.type === "string" && nav.type === "reload") {
-            isReloading();
-        }
-    }, []);
+
 
     const handleSubmit = async (e) => {
         e.preventDefault();
