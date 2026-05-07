@@ -110,11 +110,8 @@ class LlamaOrchestor:
 
         usar_historial = any(w in mensaje.lower() for w in ref_words)
 
-        # Extraer user_id numérico si es posible
-        try:
-            uid = int(session_id) if session_id and str(session_id).isdigit() else None
-        except ValueError:
-            uid = None
+        # El user_id puede ser numérico o string (UUID, Auth0, etc.)
+        uid = session_id if session_id else None
 
         # Routing (selector decide tool)
         query_text = mensaje if not usar_historial else "\n".join([f"{h.role}: {h.content}" for h in last]) + "\nUsuario: " + mensaje

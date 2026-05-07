@@ -185,7 +185,7 @@ class OperationsDataService:
                 COALESCE(c.email, '') as customer_email
             FROM customer_reminders cr
             LEFT JOIN customers c ON cr.customer_id = c.id
-            WHERE cr.user_id = {user_id}
+            WHERE cr.user_id = '{user_id}'
             AND cr.reminder_type = 'appointment'
             AND cr.status IN ('pending', 'in_progress')
             AND cr.reminder_date >= CURDATE()
@@ -260,7 +260,7 @@ class OperationsDataService:
                 COALESCE(c.email, '') as customer_email
             FROM customer_reminders cr
             LEFT JOIN customers c ON cr.customer_id = c.id
-            WHERE cr.user_id = {user_id}
+            WHERE cr.user_id = '{user_id}'
             AND cr.reminder_type = 'appointment'
             AND LOWER(COALESCE(c.full_name, '')) LIKE LOWER('%{search_term}%')
             ORDER BY cr.reminder_date ASC
@@ -358,7 +358,7 @@ class OperationsDataService:
                 COALESCE(c.full_name, 'Cliente sin asignar') as customer_name
             FROM customer_reminders cr
             LEFT JOIN customers c ON cr.customer_id = c.id
-            WHERE cr.user_id = {user_id}
+            WHERE cr.user_id = '{user_id}'
             AND LOWER(COALESCE(cr.reminder_type, '')) LIKE '%appointment%'
             AND LOWER(COALESCE(cr.status, '')) IN ('pending', 'in_progress', 'scheduled', 'confirmed', 'open')
             AND cr.reminder_date >= DATE_SUB(CURDATE(), INTERVAL 1 DAY)

@@ -182,7 +182,7 @@ class CustomerDataService:
         LEFT JOIN users u ON pc.user_id = u.id
         INNER JOIN model_has_roles mhr
             ON mhr.model_id = u.id
-            AND mhr.model_type = 'App\\\\Models\\\\User'
+            AND mhr.model_type LIKE '%User'
         INNER JOIN roles r
             ON r.id = mhr.role_id
             AND r.name IN ({roles_in})
