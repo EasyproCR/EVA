@@ -110,9 +110,15 @@ class LlamaOrchestor:
 
         usar_historial = any(w in mensaje.lower() for w in ref_words)
 
+        # Extraer user_id numérico si es posible
+        try:
+            uid = int(session_id) if session_id and str(session_id).isdigit() else None
+        except ValueError:
+            uid = None
+
         # Routing (selector decide tool)
         query_text = mensaje if not usar_historial else "\n".join([f"{h.role}: {h.content}" for h in last]) + "\nUsuario: " + mensaje
-        raw = self.router.query(query_text, session_id=session_id, user_roles=user_roles or [])
+        raw = self.router.query(query_text, session_id=session_id, user_roles=user_roles or [], user_id=uid)
 
         resp = raw.response if hasattr(raw, "response") else raw
         
@@ -144,7 +150,7 @@ class LlamaOrchestor:
             dict con recordatorios o mensaje de no autorizado
         """
         # Verificar si tiene rol de RRHH
-        allowed_roles = {'super_admin', 'rrhh'}
+        allowed_roles = {'super_admin', 'admin', 'administrator', 'master', 'rrhh'}
         roles_lower = [str(r).lower().strip() for r in user_roles]
 
         if not any(role in allowed_roles for role in roles_lower):
@@ -175,7 +181,7 @@ class LlamaOrchestor:
             dict con recordatorios o mensaje de no autorizado
         """
         # Verificar si tiene rol que puede ver citas de operaciones
-        allowed_roles = {'super_admin', 'operations', 'gerente', 'servicio_al_cliente'}
+        allowed_roles = {'super_admin', 'admin', 'administrator', 'master', 'operations', 'gerente', 'servicio_al_cliente'}
         roles_lower = [str(r).lower().strip() for r in user_roles]
 
         if not any(role in allowed_roles for role in roles_lower):

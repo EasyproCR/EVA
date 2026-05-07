@@ -687,6 +687,8 @@ class LlamaRouter:
             self.operations_engine.set_user_roles(user_roles)
             self.quotes_gen_engine.set_user_roles(user_roles)
             self.customer_engine.set_user_roles(user_roles)
+            self.reminders_engine.set_user_roles(user_roles)
+            self.customer_reminders_engine.set_user_roles(user_roles)
             if user_id:
                 self.reminders_engine.set_user_id(user_id)
                 self.customer_reminders_engine.set_user_id(user_id)
