@@ -238,7 +238,11 @@ class PropertyQuestionEngine(BaseQueryEngine):
         if property_data.get('provincia'):
             ubicacion_parts.append(property_data['provincia'])
         if ubicacion_parts:
-            lines.append(f"Ubicacion: **{', '.join(ubicacion_parts)}**")
+            ubicacion_str = ', '.join(ubicacion_parts)
+            import urllib.parse
+            maps_query = urllib.parse.quote(f"{ubicacion_str}, Costa Rica")
+            maps_url = f"https://www.google.com/maps/search/?api=1&query={maps_query}"
+            lines.append(f"Ubicación: **{ubicacion_str}**\n📍 [Ver en Google Maps]({maps_url})")
 
         # Precio
         if property_data.get('precio_usd'):
@@ -331,7 +335,10 @@ class PropertyQuestionEngine(BaseQueryEngine):
 
             if ubicacion_parts:
                 ubicacion = ', '.join(ubicacion_parts)
-                return f"**{ubicacion}**"
+                import urllib.parse
+                maps_query = urllib.parse.quote(f"{ubicacion}, Costa Rica")
+                maps_url = f"https://www.google.com/maps/search/?api=1&query={maps_query}"
+                return f"**{ubicacion}**\n📍 [Ver en Google Maps]({maps_url})"
             else:
                 return "No hay información de ubicación disponible."
 

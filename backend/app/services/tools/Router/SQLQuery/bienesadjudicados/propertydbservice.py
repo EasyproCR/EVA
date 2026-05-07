@@ -323,7 +323,12 @@ class PropertyDatabaseService:
             ubicacion_parts.append(property_data['provincia'])
 
         if ubicacion_parts:
-            lines.append(f"• Ubicación: {', '.join(ubicacion_parts)}")
+            ubicacion_str = ', '.join(ubicacion_parts)
+            import urllib.parse
+            maps_query = urllib.parse.quote(f"{ubicacion_str}, Costa Rica")
+            maps_url = f"https://www.google.com/maps/search/?api=1&query={maps_query}"
+            lines.append(f"• Ubicación: {ubicacion_str}")
+            lines.append(f"• Google Maps: {maps_url}")
 
         # Precio
         if property_data.get('precio_usd'):

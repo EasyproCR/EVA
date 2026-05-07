@@ -58,7 +58,7 @@ INSTRUCCIONES CRÍTICAS:
    - ## 🏠 [Nombre de la propiedad]
    - Resumen breve
    - ### 💰 Precio
-   - ### 📍 Ubicación  
+   - ### 📍 Ubicación (Incluye el enlace de Google Maps si está disponible)
    - ### 🔑 Características Principales
    - ### 🏦 Información del Banco/Entidad (OBLIGATORIO si está en DB)
    - ### 👤 Agente a Cargo (OBLIGATORIO si está en DB)
@@ -462,7 +462,7 @@ INSTRUCCIONES CRÍTICAS:
    - ## 🏠 [Nombre de la propiedad]
    - Resumen breve
    - ### 💰 Precio
-   - ### 📍 Ubicación
+   - ### 📍 Ubicación (Incluye el enlace de Google Maps si está disponible)
    - ### 🔑 Características Principales
    - ### 🏦 Información del Banco/Entidad (OBLIGATORIO si está en DB)
    - ### 👤 Agente a Cargo (OBLIGATORIO si está en DB)
