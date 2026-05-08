@@ -42,7 +42,7 @@ class CustomerQuestionEngine(BaseQueryEngine):
         if not self.user_roles:
             return False
             
-        roles_permitidos = {'servicio_al_cliente', 'master', 'admin', 'super_admin'}
+        roles_permitidos = {'servicio_al_cliente', 'master', 'admin', 'super_admin', 'administrator'}
         user_roles_set = {str(r).lower().strip() for r in self.user_roles}
         return bool(roles_permitidos.intersection(user_roles_set))
 
