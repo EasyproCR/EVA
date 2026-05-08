@@ -704,10 +704,13 @@ class LlamaRouter:
                 logger.info(f"[HARDCODED] Consulta de clientes ADM detectada → customer_engine")
                 from llama_index.core.schema import QueryBundle
                 _qb = QueryBundle(query_str=user_query)
-                self.customer_engine.set_user_roles(user_roles)
+                self.customer_engine.set_user_roles(user_roles or [])
+                self.customer_engine.set_bypass_permission(True)
                 _resp = self.customer_engine._query(_qb)
+                self.customer_engine.set_bypass_permission(False)
                 logger.info(f"[HARDCODED] Respuesta customer_engine: {str(_resp)[:150]}...")
                 return _resp
+
 
             # 1️⃣ PRE-PROCESAMIENTO: Detectar patrones específicos
 

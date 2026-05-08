@@ -1,5 +1,7 @@
 """
-Customer Question Engine - Responde preguntas sobre clientes personales
+Customer Question Engine - Responde preguntas sobre clientes personales ADM
+SIEMPRE usa CustomerDataService para buscar en personal_customers.
+Solo retorna clientes cuyos asesores tienen rol admin/administrator/super_admin.
 """
 
 import logging
@@ -11,60 +13,84 @@ from .customer_data_service import CustomerDataService
 
 logger = logging.getLogger(__name__)
 
+
 class CustomerQuestionEngine(BaseQueryEngine):
     """
-    Query Engine para responder preguntas sobre clientes personales (necesidades y direcciones).
+    Query Engine para responder preguntas sobre clientes personales ADM.
+    La restriccion de solo mostrar clientes admin se aplica en el SQL
+    (INNER JOIN roles WHERE name IN ('administrator','super_admin','admin')).
     """
 
-    # Keywords para detectar preguntas sobre clientes
+    # Keywords que identifican una pregunta sobre clientes
     CUSTOMER_KEYWORDS = {
         'cliente', 'clientes', 'personas', 'comprador', 'compradores',
         'buscan', 'busca', 'necesitan', 'necesita', 'viven en', 'son de',
-        'quieren', 'quiere'
+        'quieren', 'quiere', 'personal_customers'
+    }
+
+    # Roles con acceso permitido
+    ALLOWED_ROLES = {
+        'servicio_al_cliente', 'master', 'admin', 'super_admin',
+        'administrator', 'administrador', 'gerente'
     }
 
     def __init__(self, sql_database=None):
         super().__init__(callback_manager=CallbackManager([]))
         self.sql_database = sql_database
         self.user_roles = []
+        # Flag para bypass de permiso cuando se llama desde hardcoded routing
+        self._bypass_permission = False
         self.data_service = CustomerDataService(sql_database)
-        logger.info("✓ CustomerQuestionEngine inicializado")
+        logger.info("CustomerQuestionEngine inicializado")
+
+    def set_user_roles(self, roles):
+        self.user_roles = roles if roles else []
+        logger.info(f"Roles asignados a CustomerQuestionEngine: {self.user_roles}")
+
+    def set_bypass_permission(self, bypass: bool = True):
+        """Permite bypass del check de roles cuando el router ya validó el acceso."""
+        self._bypass_permission = bypass
 
     def _is_customer_question(self, query: str) -> bool:
         query_lower = query.lower()
         return any(keyword in query_lower for keyword in self.CUSTOMER_KEYWORDS)
 
-    def set_user_roles(self, roles):
-        self.user_roles = roles if roles else []
-        logger.info(f"  👤 Roles asignados a CustomerQuestionEngine: {self.user_roles}")
-
     def _has_permission(self) -> bool:
+        # Si bypass activo, permitir siempre (el router ya valido)
+        if self._bypass_permission:
+            return True
+        # Sin roles asignados -> denegar
         if not self.user_roles:
+            logger.warning("CustomerQuestionEngine: sin roles, denegando acceso")
             return False
-            
-        roles_permitidos = {'servicio_al_cliente', 'master', 'admin', 'super_admin', 'administrator'}
         user_roles_set = {str(r).lower().strip() for r in self.user_roles}
-        return bool(roles_permitidos.intersection(user_roles_set))
+        has_perm = bool(self.ALLOWED_ROLES.intersection(user_roles_set))
+        logger.info(f"Permiso clientes: {has_perm} | roles={user_roles_set}")
+        return has_perm
 
     def _query(self, query_bundle: QueryBundle) -> Response:
         query = query_bundle.query_str
-        logger.info(f"👥 Customer Question: {query}")
+        logger.info(f"CustomerQuestionEngine._query: '{query}'")
+        logger.info(f"  roles={self.user_roles} | bypass={self._bypass_permission}")
 
-        if not self._is_customer_question(query):
-            return Response(response="")
-
+        # Verificar permiso
         if not self._has_permission():
-            logger.warning(f"⚠️ Acceso denegado a Clientes Personales para roles: {self.user_roles}")
+            logger.warning(f"Acceso denegado. Roles: {self.user_roles}")
             return Response(
-                response="🔒 **Acceso Denegado**\n\nSolo el departamento de **Servicio al Cliente** y administradores están autorizados para buscar en la base de datos de clientes personales."
+                response=(
+                    "Acceso Denegado\n\n"
+                    "Solo administradores y Servicio al Cliente pueden "
+                    "consultar la base de datos de clientes personales."
+                )
             )
 
         try:
             response_text = self.data_service.process_query(query)
+            logger.info(f"Respuesta CustomerDataService: {response_text[:100]}...")
             return Response(response=response_text)
         except Exception as e:
-            logger.error(f"❌ Error en CustomerDataService: {str(e)}", exc_info=True)
-            return Response(response=f"⚠️ Error procesando tu consulta de clientes: {str(e)}")
+            logger.error(f"Error en CustomerDataService: {str(e)}", exc_info=True)
+            return Response(response=f"Error procesando consulta de clientes: {str(e)}")
 
     async def _aquery(self, query_bundle: QueryBundle) -> Response:
         return self._query(query_bundle)
