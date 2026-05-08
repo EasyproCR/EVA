@@ -679,7 +679,38 @@ class LlamaRouter:
                 logger.info(f"✅ [HARDCODED] Estrategia generada: {str(_resp)[:150]}...")
                 return _resp
 
+            # 0.7️⃣ DETECCIÓN HARDCODED: Consulta de clientes ADM/Admin
+            # Intercepta ANTES del router LLaMA para evitar que use easycore SQL incorrecto
+            _CUSTOMER_KW = [
+                'cliente', 'clientes', 'compradores', 'comprador',
+                'clientes admin', 'clientes adm', 'clientes administrativos'
+            ]
+            _ADMIN_KW = ['admin', 'adm', 'administrativo', 'administracion', 'administración']
+            _has_customer_kw = any(kw in _q_lower for kw in _CUSTOMER_KW)
+            _has_admin_kw = any(kw in _q_lower for kw in _ADMIN_KW)
+
+            # Detectar si es consulta de clientes (con o sin "admin")
+            # Si dice "clientes" + alguna palabra de búsqueda sobre necesidad/ubicación → customer engine
+            _NEED_LOCATION_KW = [
+                'buscan', 'necesitan', 'quieren', 'son de', 'viven en',
+                'de cartago', 'de san jose', 'de heredia', 'de alajuela',
+                'de guanacaste', 'de puntarenas', 'de limon', 'de limon',
+                'provincia', 'canton', 'propiedades', 'casa', 'lote',
+                'vehiculo', 'vehículo', 'terreno', 'apartamento', 'lista de'
+            ]
+            _has_need_location = any(kw in _q_lower for kw in _NEED_LOCATION_KW)
+
+            if _has_customer_kw and (_has_admin_kw or _has_need_location):
+                logger.info(f"[HARDCODED] Consulta de clientes ADM detectada → customer_engine")
+                from llama_index.core.schema import QueryBundle
+                _qb = QueryBundle(query_str=user_query)
+                self.customer_engine.set_user_roles(user_roles)
+                _resp = self.customer_engine._query(_qb)
+                logger.info(f"[HARDCODED] Respuesta customer_engine: {str(_resp)[:150]}...")
+                return _resp
+
             # 1️⃣ PRE-PROCESAMIENTO: Detectar patrones específicos
+
             query_type, property_id = self.query_preprocessor.analyze(user_query)
 
             # Establecer user_roles en engines especializados
