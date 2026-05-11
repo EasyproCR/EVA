@@ -683,9 +683,15 @@ class LlamaRouter:
             # Intercepta ANTES del router LLaMA para evitar que use easycore SQL incorrecto
             _CUSTOMER_KW = [
                 'cliente', 'clientes', 'compradores', 'comprador',
-                'clientes admin', 'clientes adm', 'clientes administrativos'
+                'clientes admin', 'clientes adm', 'clientes administrativos',
+                'mis clientes', 'ver clientes', 'lista de clientes', 'listar clientes',
+                'cuales clientes', 'cuáles clientes', 'que clientes', 'qué clientes',
+                'mostrar clientes', 'muestrame los clientes', 'muéstrame los clientes'
             ]
-            _ADMIN_KW = ['admin', 'adm', 'administrativo', 'administracion', 'administración']
+            _ADMIN_KW = [
+                'admin', 'adm', 'administrativo', 'administracion', 'administración',
+                'personales', 'personal', 'mis', 'tengo', 'asignados', 'asignado'
+            ]
             _has_customer_kw = any(kw in _q_lower for kw in _CUSTOMER_KW)
             _has_admin_kw = any(kw in _q_lower for kw in _ADMIN_KW)
 
@@ -700,7 +706,17 @@ class LlamaRouter:
             ]
             _has_need_location = any(kw in _q_lower for kw in _NEED_LOCATION_KW)
 
-            if _has_customer_kw and (_has_admin_kw or _has_need_location):
+            # También detectar frases directas completas como "clientes admin"
+            _DIRECT_CUSTOMER_PHRASES = [
+                'clientes admin', 'clientes adm', 'clientes administrativos',
+                'clientes de administracion', 'clientes de administración',
+                'mis clientes', 'ver mis clientes', 'listar mis clientes',
+                'mostrar mis clientes', 'dame mis clientes', 'dame los clientes',
+                'ver los clientes', 'clientes personales', 'personal customers'
+            ]
+            _is_direct_customer_query = any(phrase in _q_lower for phrase in _DIRECT_CUSTOMER_PHRASES)
+
+            if _has_customer_kw and (_has_admin_kw or _has_need_location or _is_direct_customer_query):
                 logger.info(f"[HARDCODED] Consulta de clientes ADM detectada → customer_engine")
                 from llama_index.core.schema import QueryBundle
                 _qb = QueryBundle(query_str=user_query)

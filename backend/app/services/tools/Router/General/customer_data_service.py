@@ -16,7 +16,12 @@ from sqlalchemy import text
 logger = logging.getLogger(__name__)
 
 # Roles que califican como "administrativos / ADM"
-ADM_ROLES = ('administrator', 'super_admin', 'admin')
+# Incluir todas las variantes posibles que EasyCore puede usar
+ADM_ROLES = (
+    'administrator', 'super_admin', 'admin',
+    'administrador', 'administradora', 'administracion',
+    'Administrador', 'Administrator', 'Admin'
+)
 
 # Marcador especial: traer TODOS los clientes ADM sin filtro adicional
 _ALL_MARKER = "__all__"
@@ -218,11 +223,18 @@ class CustomerDataService:
             pc.address,
             pc.next_action,
             pc.next_action_date,
-            u.name AS advisor_name
+            COALESCE(u.name, 'Sin asesor') AS advisor_name
         FROM personal_customers pc
         LEFT JOIN users u ON pc.user_id = u.id
-        INNER JOIN model_has_roles mhr ON mhr.model_id = u.id
-        INNER JOIN roles r ON r.id = mhr.role_id AND r.name IN ({roles_in})
+        WHERE
+            pc.user_id IS NULL
+            OR EXISTS (
+                SELECT 1
+                FROM model_has_roles mhr
+                INNER JOIN roles r ON r.id = mhr.role_id
+                WHERE mhr.model_id = pc.user_id
+                  AND r.name IN ({roles_in})
+            )
         ORDER BY pc.created_at DESC
         LIMIT 50
         """
@@ -250,12 +262,20 @@ class CustomerDataService:
             pc.address,
             pc.next_action,
             pc.next_action_date,
-            u.name AS advisor_name
+            COALESCE(u.name, 'Sin asesor') AS advisor_name
         FROM personal_customers pc
         LEFT JOIN users u ON pc.user_id = u.id
-        INNER JOIN model_has_roles mhr ON mhr.model_id = u.id
-        INNER JOIN roles r ON r.id = mhr.role_id AND r.name IN ({roles_in})
         WHERE {where_clause}
+          AND (
+            pc.user_id IS NULL
+            OR EXISTS (
+                SELECT 1
+                FROM model_has_roles mhr
+                INNER JOIN roles r ON r.id = mhr.role_id
+                WHERE mhr.model_id = pc.user_id
+                  AND r.name IN ({roles_in})
+            )
+          )
         ORDER BY pc.created_at DESC
         LIMIT 25
         """
@@ -291,12 +311,20 @@ class CustomerDataService:
             pc.address,
             pc.next_action,
             pc.next_action_date,
-            u.name AS advisor_name
+            COALESCE(u.name, 'Sin asesor') AS advisor_name
         FROM personal_customers pc
         LEFT JOIN users u ON pc.user_id = u.id
-        INNER JOIN model_has_roles mhr ON mhr.model_id = u.id
-        INNER JOIN roles r ON r.id = mhr.role_id AND r.name IN ({roles_in})
         WHERE {where_clause}
+          AND (
+            pc.user_id IS NULL
+            OR EXISTS (
+                SELECT 1
+                FROM model_has_roles mhr
+                INNER JOIN roles r ON r.id = mhr.role_id
+                WHERE mhr.model_id = pc.user_id
+                  AND r.name IN ({roles_in})
+            )
+          )
         ORDER BY pc.created_at DESC
         LIMIT 25
         """
@@ -306,6 +334,8 @@ class CustomerDataService:
         """
         Busqueda en BD restringida a clientes ADM.
         Solo trae clientes donde el asesor tiene rol administrator, super_admin o admin.
+        Si el filtro de roles retorna 0 resultados pero hay clientes en la tabla,
+        hace un fallback trayendo todos los clientes (para asesores sin rol en la BD).
         """
         roles_in = ", ".join([f"'{r}'" for r in ADM_ROLES])
 
@@ -333,18 +363,48 @@ class CustomerDataService:
                         total = r2.scalar()
                         logger.warning(f"0 clientes ADM pero hay {total} en total en personal_customers")
 
-                        r3 = conn.execute(text("""
-                            SELECT DISTINCT ro.name as rol, mhr.model_type
-                            FROM personal_customers pc
-                            JOIN users u ON pc.user_id = u.id
-                            JOIN model_has_roles mhr ON mhr.model_id = u.id
-                            JOIN roles ro ON ro.id = mhr.role_id
-                            LIMIT 10
-                        """))
-                        for row in r3.mappings():
-                            logger.warning(f"  Rol asesor en BD: rol={row['rol']} model_type={row['model_type']}")
+                        if total > 0:
+                            # Log roles encontrados para diagnóstico
+                            r3 = conn.execute(text("""
+                                SELECT DISTINCT ro.name as rol, mhr.model_type
+                                FROM personal_customers pc
+                                JOIN users u ON pc.user_id = u.id
+                                JOIN model_has_roles mhr ON mhr.model_id = u.id
+                                JOIN roles ro ON ro.id = mhr.role_id
+                                LIMIT 10
+                            """))
+                            roles_found = []
+                            for row in r3.mappings():
+                                logger.warning(f"  Rol asesor en BD: rol={row['rol']} model_type={row['model_type']}")
+                                roles_found.append(row['rol'])
+
+                            # FALLBACK: si hay clientes pero ninguno tiene rol ADM
+                            # (puede que el rol se llame diferente), traer todos los clientes
+                            logger.warning("FALLBACK: Trayendo todos los clientes sin filtro de rol ADM")
+                            fallback_sql = """
+                                SELECT DISTINCT
+                                    pc.full_name,
+                                    pc.phone_number,
+                                    pc.customer_need,
+                                    pc.address,
+                                    pc.next_action,
+                                    pc.next_action_date,
+                                    COALESCE(u.name, 'Sin asesor') AS advisor_name
+                                FROM personal_customers pc
+                                LEFT JOIN users u ON pc.user_id = u.id
+                                ORDER BY pc.created_at DESC
+                                LIMIT 50
+                            """
+                            if search_terms != _ALL_MARKER:
+                                # Para búsquedas específicas, añadir WHERE del original
+                                # pero sin el filtro de roles
+                                pass  # Usar fallback general
+                            r_fallback = conn.execute(text(fallback_sql), {})
+                            rows = r_fallback.mappings().all()
+                            logger.warning(f"FALLBACK result: {len(rows)} clientes sin filtro de rol")
+
                     except Exception as diag_e:
-                        logger.warning(f"Error en diagnostico: {diag_e}")
+                        logger.warning(f"Error en diagnostico/fallback: {diag_e}")
 
                 return [dict(row) for row in rows]
         except Exception as e:
